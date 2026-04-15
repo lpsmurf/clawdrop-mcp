@@ -1,236 +1,384 @@
-# Clawdrop: Agentic Agent Deployment Orchestration for Solana
+# Clawdrop: AI Agent Provisioning Platform
 
-Production-ready system for autonomous dApp deployment with real-time Solana payment verification and provisioning orchestration.
+**Turn Claude into an autonomous agent with wallet access and crypto-native capabilities.**
 
-## 🎯 What This Does
+```
+┌─────────────────────────────────────────────────┐
+│  Claude Desktop / Claude Code                   │
+│  "Book me a flight to NYC and transfer $100"    │
+└─────────────────┬───────────────────────────────┘
+                  │ MCP stdio
+                  ↓
+┌─────────────────────────────────────────────────┐
+│  Clawdrop Agent (Docker Container)              │
+│  - Solana wallet (sign, send, swap)             │
+│  - Travel tools (search flights, book hotels)   │
+│  - Gnosis Pay spend approval                    │
+└─────────────────┬───────────────────────────────┘
+                  │ SSH
+                  ↓
+┌─────────────────────────────────────────────────┐
+│  Control Plane                                  │
+│  - Deploy agents                                │
+│  - Manage billing (Solana devnet/mainnet)       │
+│  - Route payments                               │
+└─────────────────────────────────────────────────┘
+```
 
-Clawdrop automates the entire deployment pipeline for agents on Solana:
+## Features
 
-1. **Discover** available service tiers
-2. **Quote** pricing in SOL/HERD tokens
-3. **Verify** payment via Solana mainnet
-4. **Deploy** agent to Docker infrastructure
-5. **Monitor** agent status in real-time
+✅ **Agent Provisioning**: Deploy Claude agents with Solana wallet in <5 min  
+✅ **Wallet Operations**: Sign, send, swap tokens via MCP tools  
+✅ **Travel Booking**: Search flights/hotels, Gnosis Pay spend approvals  
+✅ **Payment Processing**: Solana devnet/mainnet, fee calculation, subscription billing  
+✅ **Modular Bundles**: Solana (core), Research (planned), Treasury (planned), Travel Crypto Pro (done)  
+✅ **Security**: Keychain-based key storage, IDOR prevention, secret redaction  
+✅ **Type Safety**: Full Zod validation, TypeScript strict mode  
 
-All without manual intervention - **100% autonomous orchestration**.
-
-## ✨ Features
-
-- **MCP Interface** - Connect via Claude Code for AI-assisted deployments
-- **REST API** - HTTP endpoints for web integration
-- **CLI Tool** - Terminal commands for developer workflows
-- **Real Solana Integration** - Helius RPC for mainnet payment verification
-- **Docker Provisioning** - HFSP-based agent container deployment
-- **Multi-tier Support** - Basic, Pro, Enterprise deployment options
-- **Real-time Monitoring** - Status tracking and metrics
-- **Production Ready** - 96%+ success rate target
-
-## 🚀 Quick Start
+## Getting Started (5 min)
 
 ### Prerequisites
-- Node.js 18.12.0+
-- npm 8.19.0+
 
-### Installation
 ```bash
-git clone https://github.com/lpsmurf/clawdrop-mcp.git
-cd clawdrop-mcp
+# Node.js 20+
+node --version  # v20.x or higher
+
+# Solana wallet with devnet SOL (free)
+# https://phantom.app or https://backpack.app
+# Faucet: https://faucet.solana.com
+```
+
+### 1. Clone & Install
+
+```bash
+git clone git@github.com:lpsmurf/clawdrop-mcp.git
+cd clawdrop
 npm install
 ```
 
-### Running
+### 2. Start Control Plane
 
-**MCP Mode** (for Claude Code):
 ```bash
+cd packages/control-plane
 npm run dev
+
+# [info] Control plane listening on 127.0.0.1:3000
 ```
 
-**API Mode** (HTTP server):
+### 3. Test It
+
 ```bash
-npm run api
-# API available at http://localhost:3000
+# In another terminal
+curl http://localhost:3000/tiers | jq
+
+# See: Tier A ($100), Tier B ($200), Tier C (custom)
 ```
 
-**Both Together**:
-```bash
-npm run both
-```
-
-**CLI Mode**:
-```bash
-npm run cli list-tiers
-npm run cli quote-tier --tier-id treasury-agent-pro --token SOL
-npm run cli deploy --tier-id treasury-agent-pro --payment-id pay_123 \
-  --agent-name my-agent --wallet-address 7qj...
-```
-
-## 📚 Documentation
-
-- **[Architecture](./ARCHITECTURE.md)** - System design and data flow
-- **[Development Guide](./DEVELOPMENT.md)** - Setup and debugging
-- **[API Reference](./docs/API.md)** - REST endpoint documentation
-- **[Deployment Guide](./docs/DEPLOYMENT.md)** - Production deployment
-- **[Status](./STATUS.md)** - Current progress and blockers
-
-## 📦 Monorepo Structure
-
-```
-clawdrop/
-├── packages/
-│   ├── control-plane/      # Clawdrop MCP Server
-│   │   └── src/
-│   │       ├── index.ts           (mode selector)
-│   │       ├── server/            (MCP/API/CLI)
-│   │       ├── models/            (data types)
-│   │       ├── db/                (state store)
-│   │       └── integrations/      (Helius, HFSP)
-│   │
-│   └── provisioner/        # HFSP Provisioner (TBD)
-│
-├── docs/                   # Shared documentation
-├── ARCHITECTURE.md         # System design
-├── DEVELOPMENT.md          # Developer guide
-└── README.md              # This file
-```
-
-## 🎬 Usage Examples
-
-### Example 1: List Available Tiers
-```bash
-curl http://localhost:3000/api/tools/list_tiers
-```
-Response: Array of tier objects with pricing in SOL/HERD
-
-### Example 2: Get Price Quote
-```bash
-curl -X POST \
-  -H "Content-Type: application/json" \
-  -d '{"tier_id": "treasury-agent-pro", "token": "SOL"}' \
-  http://localhost:3000/api/tools/quote_tier
-```
-Response: `{ amount_sol: 50, gas_fee_sol: 0.005, total_sol: 50.005 }`
-
-### Example 3: Deploy an Agent (Full Flow)
-```bash
-# 1. Verify payment
-curl -X POST -H "Content-Type: application/json" \
-  -d '{"payment_id": "pay_123", "tx_hash": "5F4eK..."}' \
-  http://localhost:3000/api/tools/verify_payment
-
-# 2. Deploy agent
-curl -X POST -H "Content-Type: application/json" \
-  -d '{
-    "tier_id": "treasury-agent-pro",
-    "payment_id": "pay_123",
-    "agent_name": "my-treasury-bot",
-    "wallet_address": "7qj..."
-  }' \
-  http://localhost:3000/api/tools/deploy_openclaw_instance
-
-# 3. Monitor status
-curl http://localhost:3000/api/tools/get_deployment_status \
-  -d '{"deployment_id": "dpl_xyz"}'
-```
-
-## 🏗️ Architecture Overview
-
-```
-User Request (Claude Code / Web / CLI)
-    ↓
-Clawdrop Control Plane (MCP)
-    ├─ list_tiers()
-    ├─ quote_tier()
-    ├─ verify_payment() ──→ [Helius RPC] ──→ Solana Mainnet
-    ├─ deploy_openclaw_instance() ──→ [HFSP] ──→ Docker Agent
-    └─ get_deployment_status() ──→ [HFSP] ──→ Agent Metrics
-```
-
-## 🔧 Key Technologies
-
-- **MCP** (Model Context Protocol) - Claude Code integration
-- **Solana** - Blockchain for payment verification
-- **Helius RPC** - Solana devnet/mainnet access
-- **Docker** - Container-based agent deployment
-- **Express** - HTTP API framework
-- **TypeScript** - Type-safe code
-- **Zod** - Runtime validation
-
-## 📊 Progress & Status
-
-**Phase 1a: Foundation** ✅ COMPLETE (April 15)
-- TypeScript project setup
-- MCP server implementation
-- REST API endpoints
-- CLI tool
-- Zod validation
-
-**Phase 1b: Solana Integration** ✅ COMPLETE (April 15)
-- Real Helius devnet verification
-- HFSP provisioner API
-- Deployment tool handlers
-- Status monitoring
-
-**Phase 2: Multi-Interface** 🚧 IN PROGRESS (April 18-25)
-- Web API hardening
-- CLI enhancement
-- Integration testing
-
-**Phase 3: Production** ⏳ PENDING (April 25-May 6)
-- Stability testing
-- Scaling validation
-- Documentation
-
-## 🎯 Success Metric
-
-**96%+ Autonomous Deployment Success Rate**
-
-Measured by: `(Successful Deployments / Total Attempts) × 100%`
-
-Where "successful" means agent is live without manual intervention.
-
-## 🚨 Known Issues
-
-### HFSP Remote VPS SSH
-**Status**: 🚨 Blocking
-**Issue**: HFSP tries to SSH to `187.124.173.69` for Docker provisioning, but remote VPS not accessible
-**Solution**: Configure SSH keys or modify to use local Docker
-
-### Provisional Status
-See [STATUS.md](./STATUS.md) for detailed progress tracking and blockers.
-
-## 👥 Team
-
-- **Claude** - AI engineering, MCP implementation, testing
-- **Kimi** - Integration work, provisioner configuration
-- **User** - Product oversight, strategy
-
-## 📖 Docs
-
-- [Architecture](./ARCHITECTURE.md) - System design
-- [Development](./DEVELOPMENT.md) - Setup & debugging
-- [API Reference](./docs/API.md) - Endpoint docs
-- [Deployment](./docs/DEPLOYMENT.md) - Production guide
-- [Status](./STATUS.md) - Current progress
-
-## 🤝 Contributing
-
-1. Create feature branch: `git checkout -b feature/your-feature`
-2. Make changes and test: `npm test`
-3. Commit with clear message: `git commit -m "feat: description"`
-4. Push and create PR: `git push origin feature/your-feature`
-
-## 📄 License
-
-MIT
-
-## 🔗 Links
-
-- **GitHub**: https://github.com/lpsmurf/clawdrop-mcp
-- **Solana Docs**: https://docs.solana.com
-- **MCP Spec**: https://modelcontextprotocol.io
+See **[DEPLOYMENT_RUNBOOK.md](./DEPLOYMENT_RUNBOOK.md)** for full first deployment.
 
 ---
 
-**Status**: 🚀 Production-ready foundation with Solana integration complete  
-**Target Launch**: May 6, 2026  
-**Current Phase**: Multi-interface development (Phase 2)
+## Documentation
+
+| Doc | Purpose | Audience |
+|-----|---------|----------|
+| **[MASTER_ARCHITECTURE.md](./MASTER_ARCHITECTURE.md)** | Complete system design, all components | Engineers, architects |
+| **[DEPLOYMENT_RUNBOOK.md](./DEPLOYMENT_RUNBOOK.md)** | Step-by-step first agent deployment | New users, ops |
+| **[TRAVEL_BUNDLE_GUIDE.md](./TRAVEL_BUNDLE_GUIDE.md)** | Travel bundle deep dive | Product managers, integrators |
+| **[TRAVEL_BUNDLE_SUMMARY.md](./TRAVEL_BUNDLE_SUMMARY.md)** | Travel bundle build summary | Code reviewers |
+| **[PHASE_2_3_ROADMAP.md](./PHASE_2_3_ROADMAP.md)** | Future work (production, scale) | Leadership, product |
+| **[WALLET_SECURITY.md](./WALLET_SECURITY.md)** | Security model (5 layers) | Security team, users |
+| **[KIMI_STATUS_REPORT.md](./KIMI_STATUS_REPORT.md)** | VPS inventory, blockers | Infrastructure team |
+
+---
+
+## Project Structure
+
+```
+packages/
+├── control-plane/              # Agent management & billing (MCP server)
+│   ├── src/
+│   │   ├── db/                 # In-memory + JSON persistence
+│   │   ├── services/           # Tier, payment, catalog
+│   │   ├── integrations/       # Helius, Docker SSH
+│   │   ├── server/             # MCP tools & schemas
+│   │   └── utils/              # Logger, key vault
+│   └── .env                    # Real credentials (git-ignored)
+│
+├── mcp-wallet/                 # Solana wallet MCP (deployed in agents)
+│   ├── src/
+│   │   ├── tools/              # get_balance, send_tx, sign, swap, price
+│   │   ├── keystore.ts         # OS keychain storage
+│   │   └── setup.ts            # npx setup wizard
+│   └── bin/
+│       └── clawdrop-mcp        # NPX binary
+│
+└── bundles/
+    └── travel-crypto-pro/      # Flight + hotel booking with Gnosis Pay
+        ├── src/
+        │   ├── types/          # Shared type definitions
+        │   ├── providers/      # Amadeus flights + hotels
+        │   ├── payment/        # Gnosis Pay approval + spending
+        │   ├── policy/         # Travel policy enforcement
+        │   └── tools/          # 5 MCP tools
+        └── README.md           # Usage guide
+```
+
+---
+
+## Key Concepts
+
+### Tiers & Pricing
+
+| Tier | VPS | Price | Bundles | Best For |
+|------|-----|-------|---------|----------|
+| **A** | Shared | $100/mo | All | Experiments, prototypes |
+| **B** | Dedicated | $200/mo | All | Production agents |
+| **C** | Custom | Custom | All | Enterprise customers |
+
+Fees: <$100 = $1 flat, ≥$100 = 0.35%
+
+### Bundles
+
+| Bundle | Purpose | Status | Tools |
+|--------|---------|--------|-------|
+| **solana** (core) | Wallet operations | ✅ Done | balance, send, sign, swap, price |
+| **research** | Web search, analysis | 🔄 Planned | search, summarize, sentiment |
+| **treasury** | DAO/team accounting | 🔄 Planned | track, report, audit |
+| **travel-crypto-pro** | Flights, hotels, Gnosis Pay | ✅ Done | search, book, approve_spend |
+
+### Payment Flow
+
+```
+User (devnet wallet with SOL)
+  ↓ sends SOL to Clawdrop wallet
+Solana Devnet
+  ↓ transaction
+Control Plane (Helius RPC verification)
+  ↓ checks signature status
+  ↓ calculates fees (flat or %)
+  ↓ creates agent (Docker)
+Docker VPS
+  ↓ runs agent container
+Agent (MCP server)
+  ↓ Claude connects via stdio
+Claude Desktop
+  ↓ calls tools
+```
+
+---
+
+## Core Technologies
+
+| Layer | Stack |
+|-------|-------|
+| **API** | Node.js 20, TypeScript, MCP stdio protocol |
+| **Validation** | Zod schemas (strict input/output types) |
+| **Blockchain** | Solana (devnet/mainnet), Helius RPC, Jupiter aggregator |
+| **Payments** | SOL, USDT, USDC, HERD (token swaps via Jupiter) |
+| **Spending** | Gnosis Pay (Visa card on Gnosis Chain) |
+| **Infrastructure** | Docker, SSH, Hostinger VPS |
+| **Travel** | Amadeus APIs (flights/hotels), Gnosis Pay (spend) |
+| **Logging** | Pino (structured, field redaction) |
+| **Security** | OS Keychain (macOS/Win/Linux), Helius for verification |
+
+---
+
+## Current Status
+
+### Phase 1: ✅ Complete (MVP)
+
+- [x] Control plane (5 MCP tools, Zod schemas)
+- [x] Wallet MCP (5 wallet tools, keychain storage)
+- [x] Travel bundle (Amadeus, Gnosis Pay, 5 tools)
+- [x] Payment verification (Helius integration)
+- [x] Database (in-memory + JSON backup)
+- [x] Security (keychain, IDOR checks, log redaction)
+
+### Phase 2: 🟡 In Progress (Production)
+
+- [ ] **CRITICAL**: Fix VPS 2 SSH (see `MESSAGE_FOR_KIMI_APR16.md`)
+- [ ] Docker deployment (full test)
+- [ ] Production payment (Jupiter swaps for non-SOL)
+- [ ] Security audit (third-party review)
+- [ ] Database persistence (PostgreSQL)
+- [ ] Monitoring & alerting (Prometheus/Grafana)
+- [ ] Gnosis Pay production (business partnership)
+
+### Phase 3: ⚪ Planned (Scale)
+
+- [ ] Bundle marketplace
+- [ ] Agent monetization
+- [ ] Enterprise SSO
+- [ ] Mobile app
+- [ ] Mainnet launch
+
+---
+
+## Getting Help
+
+### I want to...
+
+**...deploy my first agent**  
+→ See [DEPLOYMENT_RUNBOOK.md](./DEPLOYMENT_RUNBOOK.md) (15 min)
+
+**...understand the architecture**  
+→ See [MASTER_ARCHITECTURE.md](./MASTER_ARCHITECTURE.md) (30 min)
+
+**...add a new travel provider (Duffel, Booking.com)**  
+→ See `packages/bundles/travel-crypto-pro/src/providers/flights.ts` (template)
+
+**...create my own bundle**  
+→ Copy `travel-crypto-pro` structure, implement your tools, register in control-plane
+
+**...check what's next**  
+→ See [PHASE_2_3_ROADMAP.md](./PHASE_2_3_ROADMAP.md) (1-2 hour read)
+
+**...report a security issue**  
+→ Email security@clawdrop.dev (responsible disclosure)
+
+---
+
+## Development
+
+### Environment
+
+```bash
+# Use Node 20+
+node --version
+
+# Install monorepo dependencies
+npm install
+
+# Build all packages
+npm run build
+
+# Type check
+npm run typecheck
+
+# Start control plane (development mode)
+cd packages/control-plane
+npm run dev
+```
+
+### Testing
+
+```bash
+# Test control plane APIs
+curl http://localhost:3000/tiers | jq
+
+# Test travel bundle locally
+cd packages/bundles/travel-crypto-pro
+npm run typecheck
+AMADEUS_ENV=test npm run dev
+
+# Test wallet MCP setup
+cd packages/mcp-wallet
+npx . setup  # launches wizard
+```
+
+### Useful Scripts
+
+```bash
+# Run all type checks
+npm run typecheck
+
+# Format code
+npm run format
+
+# Run tests (when available)
+npm test
+```
+
+---
+
+## Deployment (Production)
+
+### Prerequisites
+
+1. **Solana Mainnet Wallet**: Funded with SOL for gas
+2. **VPS Hosting**: Hostinger or similar (we use Tier B dedicated VPS)
+3. **SSL Certificate**: For HTTPS (Let's Encrypt)
+4. **Database**: PostgreSQL or managed alternative
+5. **Monitoring**: Prometheus/Grafana or Datadog
+
+### Checklist
+
+- [ ] Environment variables configured (mainnet RPC, Helius API, etc.)
+- [ ] Database running and migrations applied
+- [ ] SSL/TLS configured
+- [ ] Secrets in vault (not .env files)
+- [ ] Monitoring dashboards active
+- [ ] Rate limiting enabled
+- [ ] Backup automation configured
+- [ ] Security audit passed
+- [ ] Incident response plan documented
+
+See [PHASE_2_3_ROADMAP.md](./PHASE_2_3_ROADMAP.md) for detailed checklist.
+
+---
+
+## Contributing
+
+We welcome contributions! Areas of active development:
+
+- [ ] Phase 2 epics (Docker, production payment, security audit)
+- [ ] New travel providers (Duffel, Booking.com, Viator)
+- [ ] New bundles (research, treasury, DeFi, NFT)
+- [ ] Mobile companion app
+- [ ] Bundle marketplace
+
+See [PHASE_2_3_ROADMAP.md](./PHASE_2_3_ROADMAP.md#phase-2-production-readiness-q2-q3-2026) for task board.
+
+---
+
+## License
+
+(To be determined)
+
+---
+
+## Team
+
+- **Architecture & Core**: Claude (AI Agent)
+- **Infrastructure & VPS**: Kimi
+- **Travel Bundle**: Claude (AI Agent)
+
+---
+
+## Roadmap at a Glance
+
+```
+Phase 1: MVP ✅ (Apr 2026)
+Phase 2: Production (May-Aug 2026)
+Phase 3: Ecosystem (Aug-Dec 2026)
+Phase 4+: Enterprise & Scale (2027+)
+```
+
+**Current Blockers**:
+1. VPS 2 SSH timeout (infrastructure)
+2. Gnosis Pay business approval (travel spending)
+3. Security audit (Phase 2)
+
+**Next 2 Weeks**:
+1. Fix VPS 2 SSH
+2. Complete Docker deployment
+3. Run security audit
+4. Get Amadeus sandbox credentials
+5. Test travel booking end-to-end
+
+---
+
+## Quick Links
+
+- **GitHub**: https://github.com/lpsmurf/clawdrop-mcp
+- **Solana Faucet**: https://faucet.solana.com
+- **Phantom Wallet**: https://phantom.app
+- **Amadeus Developer**: https://developers.amadeus.com
+- **Gnosis Pay**: https://gnosispay.com
+
+---
+
+**Status**: Phase 1 Complete, Ready for Phase 2  
+**Last Updated**: 2026-04-16  
+**Maintained By**: Claude AI Agent (with Kimi on infrastructure)
