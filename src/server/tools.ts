@@ -13,6 +13,7 @@ import { readServicesFromFile } from '../services/catalog';
 import { getSOLPrice, getHERDPrice, verifyHeliusTransaction } from '../integrations/helius';
 import { saveAgent, getAgent, updateAgentStatus, addAgentLog } from '../db/memory';
 import { deployViaHFSP, getHFSPStatus } from '../integrations/hfsp';
+import { sendDevnetPayment } from '../integrations/solana-payment';
 import { logger } from '../utils/logger';
 
 export const tools: Tool[] = [
@@ -221,21 +222,39 @@ async function handlePayWithSol(input: unknown): Promise<string> {
     throw new Error('Payment requires user approval');
   }
 
-  // For demo: simulate devnet transaction
-  const mockTxHash = `devnet_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+  // Get service details to determine recipient
+  const services = await readServicesFromFile();
+  const service = services.find(s => s.id === parsed.service_id);
+  
+  if (!service) {
+    throw new Error(`Service not found: ${parsed.service_id}`);
+  }
+
+  // Use service provider wallet, env treasury, or the user's wallet as fallback
+  // Note: In production, payments should go to a clawdrop treasury or service provider
+  const treasuryWallet = process.env.CLAWDROP_TREASURY_WALLET;
+  const recipientAddress = service.provider_wallet || treasuryWallet || parsed.wallet_pubkey;
+
+  // Send real SOL payment via Helius devnet RPC
+  const paymentResult = await sendDevnetPayment(recipientAddress, parsed.amount_sol);
+
+  if (!paymentResult.success || !paymentResult.signature) {
+    throw new Error(`Payment failed: ${paymentResult.error || 'Unknown error'}`);
+  }
 
   logger.info(
     {
       service_id: parsed.service_id,
       amount: parsed.amount_sol,
       wallet: parsed.wallet_pubkey,
-      tx_hash: mockTxHash,
+      tx_hash: paymentResult.signature,
+      recipient: recipientAddress,
     },
-    'Payment processed (simulated for demo)'
+    'Payment processed on devnet'
   );
 
   const response = PayWithSolResponseSchema.parse({
-    tx_hash: mockTxHash,
+    tx_hash: paymentResult.signature,
     status: 'confirmed',
     amount_sol: parsed.amount_sol,
     timestamp: new Date().toISOString(),

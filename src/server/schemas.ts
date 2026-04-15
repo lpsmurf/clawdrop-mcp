@@ -9,6 +9,7 @@ export const ServiceSchema = z.object({
   price_sol: z.number().positive(),
   price_herd: z.number().positive(),
   deployment_type: z.enum(['openclaw', 'custom']),
+  provider_wallet: z.string().optional(),
 });
 
 export type Service = z.infer<typeof ServiceSchema>;
