@@ -211,7 +211,7 @@ export async function deployViaDocker(params: {
       '--log-opt max-file=5',
       ...envFlags,
       ...labels,
-      '-v /var/log/agent_${AGENT_ID}:/var/log/agent',  // volume for logs
+      '-v /var/log/agent_${agent_id}:/var/log/agent',  // volume for logs
       OPENCLAW_IMAGE,
       // When OpenClaw container starts, it should:
       // 1. Run "npm install" for all BUNDLE_INSTALLS
