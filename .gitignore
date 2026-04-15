@@ -11,3 +11,6 @@ dist/
 *~
 .pnp
 .pnp.js
+devnet-wallet.json
+*-wallet.json
+*.key
