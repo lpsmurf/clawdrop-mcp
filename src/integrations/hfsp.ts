@@ -9,8 +9,13 @@ import { logger } from '../utils/logger';
  * See: https://github.com/lpsmurf/hfsp-agent-provisioning
  */
 
-const HFSP_API_URL = process.env.HFSP_API_URL || 'http://localhost:3001';
-const HFSP_API_KEY = process.env.HFSP_API_KEY;
+// Get config at runtime (not at module load) to ensure .env is loaded
+function getHFSPConfig() {
+  return {
+    url: process.env.HFSP_URL || 'http://localhost:3001',
+    key: process.env.HFSP_API_KEY || '',
+  };
+}
 
 export interface AgentConfig {
   name: string;
@@ -78,9 +83,10 @@ export interface HFSPDeployResponse {
 export async function deployAgent(config: AgentConfig): Promise<DeployedAgentInfo> {
   try {
     logger.info({ agent_name: config.name }, 'Deploying agent to HFSP');
+    const { url, key } = getHFSPConfig();
 
     const response = await axios.post(
-      `${HFSP_API_URL}/api/v1/agents/deploy`,
+      `${url}/api/v1/agents/deploy`,
       {
         name: config.name,
         description: config.description,
@@ -90,10 +96,10 @@ export async function deployAgent(config: AgentConfig): Promise<DeployedAgentInf
       },
       {
         headers: { 
-          'Authorization': `Bearer ${HFSP_API_KEY}`,
+          'Authorization': `Bearer ${key}`,
           'Content-Type': 'application/json',
         },
-        timeout: 30000,
+        timeout: 120000,
       }
     );
 
@@ -111,7 +117,7 @@ export async function deployAgent(config: AgentConfig): Promise<DeployedAgentInf
     return {
       agent_id,
       status: status || 'initializing',
-      url: console_url || `${HFSP_API_URL}/agents/${agent_id}`,
+      url: console_url || `${url}/agents/${agent_id}`,
     };
   } catch (error) {
     logger.error({ error, agent_name: config.name }, 'Agent deployment failed');
@@ -137,11 +143,12 @@ export async function deployAgent(config: AgentConfig): Promise<DeployedAgentInf
 export async function getAgentStatus(agentId: string): Promise<AgentStatusInfo> {
   try {
     logger.info({ agent_id: agentId }, 'Fetching agent status from HFSP');
+    const { url, key } = getHFSPConfig();
 
     const response = await axios.get(
-      `${HFSP_API_URL}/api/v1/agents/${agentId}/status`,
+      `${url}/api/v1/agents/${agentId}/status`,
       {
-        headers: { 'Authorization': `Bearer ${HFSP_API_KEY}` },
+        headers: { 'Authorization': `Bearer ${key}` },
         timeout: 10000,
       }
     );
@@ -187,11 +194,12 @@ export async function getAgentStatus(agentId: string): Promise<AgentStatusInfo> 
 export async function getAgentLogs(agentId: string): Promise<AgentStatusInfo['logs']> {
   try {
     logger.info({ agent_id: agentId }, 'Fetching agent logs from HFSP');
+    const { url, key } = getHFSPConfig();
 
     const response = await axios.get(
-      `${HFSP_API_URL}/api/v1/agents/${agentId}/logs`,
+      `${url}/api/v1/agents/${agentId}/logs`,
       {
-        headers: { 'Authorization': `Bearer ${HFSP_API_KEY}` },
+        headers: { 'Authorization': `Bearer ${key}` },
         timeout: 10000,
       }
     );
@@ -218,11 +226,12 @@ export async function getAgentLogs(agentId: string): Promise<AgentStatusInfo['lo
 export async function deleteAgent(agentId: string): Promise<boolean> {
   try {
     logger.info({ agent_id: agentId }, 'Deleting agent from HFSP');
+    const { url, key } = getHFSPConfig();
 
     await axios.delete(
-      `${HFSP_API_URL}/api/v1/agents/${agentId}`,
+      `${url}/api/v1/agents/${agentId}`,
       {
-        headers: { 'Authorization': `Bearer ${HFSP_API_KEY}` },
+        headers: { 'Authorization': `Bearer ${key}` },
         timeout: 10000,
       }
     );
@@ -250,8 +259,9 @@ export async function deleteAgent(agentId: string): Promise<boolean> {
  */
 export async function healthCheck(): Promise<boolean> {
   try {
+    const { url } = getHFSPConfig();
     const response = await axios.get(
-      `${HFSP_API_URL}/health`,
+      `${url}/health`,
       {
         timeout: 5000,
       }
@@ -288,9 +298,10 @@ export async function deployViaHFSP(req: HFSPDeployRequest): Promise<HFSPDeployR
       tier_id: req.tier_id,
       wallet_address: req.wallet_address,
     }, 'Deploying via HFSP');
+    const { url, key } = getHFSPConfig();
 
     const response = await axios.post(
-      `${HFSP_API_URL}/api/v1/agents/deploy`,
+      `${url}/api/v1/agents/deploy`,
       {
         deployment_id: req.deployment_id,
         tier_id: req.tier_id,
@@ -302,10 +313,10 @@ export async function deployViaHFSP(req: HFSPDeployRequest): Promise<HFSPDeployR
       },
       {
         headers: {
-          Authorization: `Bearer ${HFSP_API_KEY}`,
+          Authorization: `Bearer ${key}`,
           'Content-Type': 'application/json',
         },
-        timeout: 30000,
+        timeout: 120000,
       }
     );
 
@@ -368,11 +379,12 @@ export async function deployViaHFSP(req: HFSPDeployRequest): Promise<HFSPDeployR
 export async function getHFSPStatus(agent_id: string): Promise<Partial<AgentStatusInfo> & { error?: string }> {
   try {
     logger.info({ agent_id }, 'Getting HFSP status');
+    const { url, key } = getHFSPConfig();
 
     const response = await axios.get(
-      `${HFSP_API_URL}/api/v1/agents/${agent_id}`,
+      `${url}/api/v1/agents/${agent_id}`,
       {
-        headers: { Authorization: `Bearer ${HFSP_API_KEY}` },
+        headers: { Authorization: `Bearer ${key}` },
         timeout: 10000,
       }
     );
