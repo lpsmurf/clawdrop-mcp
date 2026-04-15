@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { logger } from '../utils/logger.js';
+import { logger } from '../utils/logger';
 
 /**
  * Policy Schema

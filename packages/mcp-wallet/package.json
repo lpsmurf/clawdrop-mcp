@@ -1,0 +1,30 @@
+{
+  "name": "@clawdrop/mcp",
+  "version": "0.1.0",
+  "description": "Solana wallet tools for Claude and any MCP-compatible LLM — swap, send, check balance, pay with SOL",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "clawdrop-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "node --loader ts-node/esm --experimental-specifier-resolution=node src/index.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": ["mcp", "solana", "claude", "wallet", "jupiter", "swap"],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@solana/web3.js": "^1.98.0",
+    "axios": "^1.9.0",
+    "bs58": "^6.0.0",
+    "dotenv": "^16.4.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.7.0"
+  }
+}

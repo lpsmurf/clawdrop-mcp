@@ -6,9 +6,9 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
-    "dev": "CLAWDROP_MODE=mcp node --loader ts-node/esm src/index.ts",
-    "api": "CLAWDROP_MODE=api node --loader ts-node/esm src/index.ts",
-    "both": "CLAWDROP_MODE=both node --loader ts-node/esm src/index.ts",
+    "dev": "CLAWDROP_MODE=mcp node --loader ts-node/esm --experimental-specifier-resolution=node src/index.ts",
+    "api": "CLAWDROP_MODE=api node --loader ts-node/esm --experimental-specifier-resolution=node src/index.ts",
+    "both": "CLAWDROP_MODE=both node --loader ts-node/esm --experimental-specifier-resolution=node src/index.ts",
     "cli": "node --loader ts-node/esm src/cli/index.ts",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -34,5 +34,9 @@
     "ts-jest": "^29.1.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3"
+  },
+  "ts-node": {
+    "esm": true,
+    "experimentalSpecifierResolution": "node"
   }
 }

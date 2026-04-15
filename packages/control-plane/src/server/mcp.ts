@@ -6,8 +6,8 @@ import {
   ListToolsRequest,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { tools, handleToolCall } from './tools.js';
-import { logger } from '../utils/logger.js';
+import { tools, handleToolCall } from './tools';
+import { logger } from '../utils/logger';
 
 export class ClawdropMCPServer {
   private server: Server;
