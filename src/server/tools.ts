@@ -1,4 +1,5 @@
-import { Tool } from '@modelcontextprotocol/sdk/types';
+import { Tool } from '@modelcontextprotocol/sdk/types'; 
+import { z } from 'zod';
 import { 
   ToolInputMap, 
   Service,
@@ -9,8 +10,9 @@ import {
   GetAgentStatusResponseSchema,
 } from './schemas';
 import { readServicesFromFile } from '../services/catalog';
-import { getSOLPrice, getHERDPrice } from '../integrations/helius';
-import { saveAgent, getAgent } from '../db/memory';
+import { getSOLPrice, getHERDPrice, verifyHeliusTransaction } from '../integrations/helius';
+import { saveAgent, getAgent, updateAgentStatus, addAgentLog } from '../db/memory';
+import { deployViaHFSP, getHFSPStatus } from '../integrations/hfsp';
 import { logger } from '../utils/logger';
 
 export const tools: Tool[] = [
@@ -108,6 +110,24 @@ export const tools: Tool[] = [
       required: ['agent_id'],
     },
   },
+  {
+    name: 'verify_payment',
+    description: 'Verify a Solana payment transaction on devnet using Helius RPC',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        payment_id: {
+          type: 'string',
+          description: 'The payment ID to verify',
+        },
+        tx_hash: {
+          type: 'string',
+          description: 'The Solana transaction signature (tx hash) to verify on devnet',
+        },
+      },
+      required: ['payment_id', 'tx_hash'],
+    },
+  },
 ];
 
 export async function handleToolCall(
@@ -128,6 +148,8 @@ export async function handleToolCall(
         return await handleCreateAgent(toolInput);
       case 'get_agent_status':
         return await handleGetAgentStatus(toolInput);
+      case 'verify_payment':
+        return await handleVerifyPayment(toolInput);
       default:
         throw new Error(`Unknown tool: ${toolName}`);
     }
@@ -231,44 +253,63 @@ async function handleCreateAgent(input: unknown): Promise<string> {
     throw new Error(`Service not found: ${parsed.service_id}`);
   }
 
-  // Generate agent ID
-  const agentId = `agent_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-  const mockTxHash = `devnet_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+  // Generate deployment ID
+  const deploymentId = `deploy_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
-  // Save to memory store
+  // Call HFSP to deploy the agent
+  const hfspResponse = await deployViaHFSP({
+    deployment_id: deploymentId,
+    tier_id: parsed.service_id,
+    region: (parsed.config?.region as string) || 'us-east',
+    capability_bundle: service.category,
+    payment_verified: true, // Assumes payment was verified before calling this
+    wallet_address: (parsed.config?.wallet_address as string) || 'unknown',
+    config: {
+      agent_name: parsed.agent_name,
+      agent_description: parsed.agent_description,
+      ...parsed.config,
+    },
+  });
+
+  if (hfspResponse.error) {
+    throw new Error(`HFSP deployment failed: ${hfspResponse.error}`);
+  }
+
+  // Save to memory store with real HFSP data
   saveAgent({
-    agent_id: agentId,
+    agent_id: hfspResponse.agent_id,
     service_id: parsed.service_id,
     agent_name: parsed.agent_name,
-    payment_tx_hash: mockTxHash,
+    payment_tx_hash: deploymentId, // Using deploymentId as reference
     status: 'provisioning',
-    console_url: `https://clawdrop.live/agent/${agentId}`,
+    console_url: hfspResponse.endpoint,
     deployed_at: new Date(),
     last_activity: new Date(),
     logs: [
       {
         timestamp: new Date(),
         level: 'info',
-        message: 'Agent provisioning started',
+        message: 'Agent deployment initiated via HFSP',
       },
     ],
   });
 
   logger.info(
     {
-      agent_id: agentId,
+      agent_id: hfspResponse.agent_id,
       agent_name: parsed.agent_name,
       service_id: parsed.service_id,
+      endpoint: hfspResponse.endpoint,
     },
-    'Agent deployment initiated and saved to memory'
+    'Agent deployment initiated via HFSP'
   );
 
   const response = CreateOpenclawAgentResponseSchema.parse({
-    agent_id: agentId,
+    agent_id: hfspResponse.agent_id,
     agent_name: parsed.agent_name,
     status: 'provisioning',
     deployed_at: new Date().toISOString(),
-    console_url: `https://clawdrop.live/agent/${agentId}`,
+    console_url: hfspResponse.endpoint,
   });
 
   return JSON.stringify(response);
@@ -284,19 +325,89 @@ async function handleGetAgentStatus(input: unknown): Promise<string> {
     throw new Error(`Agent not found: ${parsed.agent_id}`);
   }
 
+  // Poll HFSP for actual status
+  const hfspStatus = await getHFSPStatus(parsed.agent_id);
+  
+  if (hfspStatus.error) {
+    logger.warn({ agent_id: parsed.agent_id, error: hfspStatus.error }, 'HFSP status check returned error');
+    // Don't throw - return cached status with warning
+  } else if (hfspStatus.status) {
+    // Update local status from HFSP
+    updateAgentStatus(parsed.agent_id, hfspStatus.status as any);
+    
+    // Add HFSP logs to agent logs if available
+    if (hfspStatus.logs && hfspStatus.logs.length > 0) {
+      // Only add new logs not already in our history
+      const existingLogMessages = new Set(agent.logs.map(l => l.message));
+      for (const log of hfspStatus.logs) {
+        if (!existingLogMessages.has(log.message)) {
+          addAgentLog(parsed.agent_id, log.level as any, log.message);
+        }
+      }
+    }
+  }
+
+  // Refresh agent data after updates
+  const updatedAgent = getAgent(parsed.agent_id);
+  if (!updatedAgent) {
+    throw new Error(`Agent disappeared: ${parsed.agent_id}`);
+  }
+
   const response = GetAgentStatusResponseSchema.parse({
-    agent_id: agent.agent_id,
-    status: agent.status,
-    uptime_seconds: Math.floor((Date.now() - agent.deployed_at.getTime()) / 1000),
-    last_activity: agent.last_activity.toISOString(),
-    logs: agent.logs.map(log => ({
+    agent_id: updatedAgent.agent_id,
+    status: updatedAgent.status,
+    uptime_seconds: Math.floor((Date.now() - updatedAgent.deployed_at.getTime()) / 1000),
+    last_activity: updatedAgent.last_activity.toISOString(),
+    logs: updatedAgent.logs.map(log => ({
       timestamp: log.timestamp.toISOString(),
       level: log.level,
       message: log.message,
     })),
   });
 
-  logger.info({ agent_id: parsed.agent_id }, 'Agent status retrieved from memory');
+  logger.info({ agent_id: parsed.agent_id, status: updatedAgent.status }, 'Agent status retrieved');
+
+  return JSON.stringify(response);
+}
+
+// Schema for verify_payment (not in original schemas, defining inline)
+const VerifyPaymentRequestSchema = z.object({
+  payment_id: z.string(),
+  tx_hash: z.string(),
+});
+
+const VerifyPaymentResponseSchema = z.object({
+  payment_id: z.string(),
+  tx_hash: z.string(),
+  verified: z.boolean(),
+  confirmation_status: z.string().optional(),
+  timestamp: z.string().datetime(),
+});
+
+async function handleVerifyPayment(input: unknown): Promise<string> {
+  const parsed = VerifyPaymentRequestSchema.parse(input);
+
+  logger.info({ payment_id: parsed.payment_id, tx_hash: parsed.tx_hash }, 'Verifying payment');
+
+  // Call Helius to verify the transaction
+  const isVerified = await verifyHeliusTransaction(parsed.tx_hash);
+
+  // Get detailed status for the response
+  const details = await import('../integrations/helius').then(m => m.getTransactionDetails(parsed.tx_hash));
+
+  const response = VerifyPaymentResponseSchema.parse({
+    payment_id: parsed.payment_id,
+    tx_hash: parsed.tx_hash,
+    verified: isVerified,
+    confirmation_status: details?.confirmationStatus || 'unknown',
+    timestamp: new Date().toISOString(),
+  });
+
+  logger.info({
+    payment_id: parsed.payment_id,
+    tx_hash: parsed.tx_hash,
+    verified: isVerified,
+  }, `Payment verification ${isVerified ? 'successful' : 'failed'}`);
 
   return JSON.stringify(response);
 }
