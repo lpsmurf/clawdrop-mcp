@@ -10,7 +10,7 @@ const SolanaWalletSchema = z
 // ─── Shared enums ─────────────────────────────────────────────────────────────
 
 export const PaymentTokenSchema = z.enum(['SOL', 'USDT', 'USDC', 'HERD']);
-export const BundleSchema = z.enum(['solana', 'research', 'treasury']);
+export const BundleSchema = z.enum(['solana', 'research', 'treasury', 'travel-crypto-pro']);
 export const AgentStatusSchema = z.enum([
   'provisioning',
   'running',

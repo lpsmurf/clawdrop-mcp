@@ -32,7 +32,7 @@ const TIERS: Record<string, Tier> = {
     vps_capacity: "2GB RAM, 1 vCPU, Shared",
     price_sol: 0.5, // ~$100/month at $200/SOL
     price_usd: 100,
-    bundles_included: ["solana", "research", "treasury"], // All bundles available
+    bundles_included: ["solana", "research", "treasury", "travel-crypto-pro"], // All bundles available
     max_agents: 5,
     monthly_renewal: true,
   },
@@ -45,7 +45,7 @@ const TIERS: Record<string, Tier> = {
     vps_capacity: "4GB RAM, 2 vCPU, Dedicated",
     price_sol: 1.0, // ~$200/month at $200/SOL
     price_usd: 200,
-    bundles_included: ["solana", "research", "treasury"], // All bundles available
+    bundles_included: ["solana", "research", "treasury", "travel-crypto-pro"], // All bundles available
     max_agents: 1,
     monthly_renewal: true,
   },
@@ -58,7 +58,7 @@ const TIERS: Record<string, Tier> = {
     vps_capacity: "Custom",
     price_sol: 2.0, // Custom pricing
     price_usd: 400,
-    bundles_included: ["solana", "research", "treasury"],
+    bundles_included: ["solana", "research", "treasury", "travel-crypto-pro"],
     max_agents: 5,
     monthly_renewal: true,
   },

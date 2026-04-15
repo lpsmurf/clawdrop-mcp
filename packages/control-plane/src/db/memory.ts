@@ -6,7 +6,7 @@ import { logger } from '../utils/logger';
 
 export type AgentStatus = 'provisioning' | 'running' | 'paused' | 'failed' | 'stopped';
 export type PaymentToken = 'SOL' | 'USDT' | 'USDC' | 'HERD';
-export type BundleName = 'solana' | 'research' | 'treasury';
+export type BundleName = 'solana' | 'research' | 'treasury' | 'travel-crypto-pro';
 
 export interface PaymentRecord {
   payment_id: string;
