@@ -1,7 +1,7 @@
 import { readFile } from 'fs/promises';
 import { join } from 'path';
-import { Service, ServiceSchema } from '../server/schemas';
-import { logger } from '../utils/logger';
+import { Service, ServiceSchema } from '../server/schemas.js';
+import { logger } from '../utils/logger.js';
 
 const SERVICES_PATH = join(process.cwd(), 'src', 'data', 'services.json');
 

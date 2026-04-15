@@ -8,12 +8,12 @@ import {
   PayWithSolResponseSchema,
   CreateOpenclawAgentResponseSchema,
   GetAgentStatusResponseSchema,
-} from './schemas';
-import { readServicesFromFile } from '../services/catalog';
-import { getSOLPrice, getHERDPrice, verifyHeliusTransaction } from '../integrations/helius';
-import { saveAgent, getAgent, updateAgentStatus, addAgentLog } from '../db/memory';
-import { deployViaHFSP, getHFSPStatus } from '../integrations/hfsp';
-import { logger } from '../utils/logger';
+} from './schemas.js';
+import { readServicesFromFile } from '../services/catalog.js';
+import { getSOLPrice, getHERDPrice, verifyHeliusTransaction } from '../integrations/helius.js';
+import { saveAgent, getAgent, updateAgentStatus, addAgentLog } from '../db/memory.js';
+import { deployViaHFSP, getHFSPStatus } from '../integrations/hfsp.js';
+import { logger } from '../utils/logger.js';
 
 export const tools: Tool[] = [
   {
