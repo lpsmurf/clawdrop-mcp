@@ -1,0 +1,24 @@
+{
+  "name": "clawdrop",
+  "version": "1.0.0",
+  "description": "Agentic Agent Deployment Orchestration for Solana - Unified Monorepo",
+  "private": true,
+  "workspaces": [
+    "packages/control-plane",
+    "packages/provisioner"
+  ],
+  "scripts": {
+    "dev": "cd packages/control-plane && npm run dev",
+    "api": "cd packages/control-plane && npm run api",
+    "both": "cd packages/control-plane && npm run both",
+    "cli": "cd packages/control-plane && npm run cli",
+    "test": "cd packages/control-plane && npm test",
+    "build": "cd packages/control-plane && npm run build",
+    "provisioner": "cd packages/provisioner && npm run dev",
+    "install-all": "npm install",
+    "clean": "rm -rf node_modules packages/*/node_modules packages/*/dist"
+  },
+  "keywords": ["solana", "agentic", "mcp", "deployment"],
+  "author": "Clawdrop Team",
+  "license": "MIT"
+}
