@@ -69,4 +69,9 @@ export const tools: Tool[] = [
       required: [],
     },
   },
+  {
+    name: 'get_fee_summary',
+    description: 'Get Clawdrop platform fee summary (admin only)',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+  },
 ];

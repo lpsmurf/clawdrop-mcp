@@ -4,6 +4,7 @@
  */
 
 import { duffelProvider } from '../providers/duffel';
+import { calculateBookingFee, collectFee } from '../../../control-plane/src/services/fee-collector.js';
 
 export const flightTools = {
   search_flights: {
@@ -202,6 +203,21 @@ export async function handleFlightTool(
           }
         );
 
+        // Collect Clawdrop platform fee — non-blocking, never fails the booking
+        const bookingValueUsd = Number(booking.total_amount) || 0;
+        const feeCalc = calculateBookingFee(bookingValueUsd);
+        collectFee({
+          type: 'booking',
+          user_wallet: (toolInput.wallet_address as string) || 'unknown',
+          fee_sol: feeCalc.fee_sol,
+          fee_usd_estimate: feeCalc.fee_usd_estimate,
+          metadata: {
+            order_id: booking.id,
+            booking_value_usd: bookingValueUsd,
+            currency: booking.total_currency,
+          },
+        }).catch(() => {}); // non-blocking
+
         return {
           success: true,
           order: {
@@ -209,6 +225,11 @@ export async function handleFlightTool(
             confirmation_url: booking.confirmation_url,
             total: booking.total_amount,
             currency: booking.total_currency,
+          },
+          platform_fee: {
+            fee_sol: feeCalc.fee_sol,
+            fee_usd_estimate: feeCalc.fee_usd_estimate,
+            clawdrop_wallet: feeCalc.clawdrop_wallet,
           },
         };
       }
