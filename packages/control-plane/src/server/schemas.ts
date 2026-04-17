@@ -131,6 +131,7 @@ export const GetDeploymentStatusOutputSchema = z.object({
       message: z.string(),
     })
   ),
+  warning: z.string().nullable(),
 });
 
 // ─── cancel_subscription ─────────────────────────────────────────────────────
@@ -150,6 +151,25 @@ export const CancelSubscriptionOutputSchema = z.object({
   stopped_at: z.string().datetime(),
 });
 
+
+// ─── renew_subscription ───────────────────────────────────────────────────────
+
+export const RenewSubscriptionInputSchema = z.object({
+  agent_id: z.string().describe('Agent ID to renew'),
+  owner_wallet: z.string().describe('Your Solana wallet public key (proves ownership)'),
+  payment_tx_hash: z.string().describe('Transaction hash of renewal payment'),
+  payment_token: z.enum(['SOL', 'USDC', 'USDT']).default('SOL'),
+});
+
+export const RenewSubscriptionOutputSchema = z.object({
+  agent_id: z.string(),
+  status: z.string(),
+  renewed_until: z.string(),
+  message: z.string(),
+  was_stopped: z.boolean(),
+  restarted: z.boolean(),
+});
+
 // ─── Tool input/output maps ───────────────────────────────────────────────────
 
 export const ToolInputSchemas = {
@@ -158,4 +178,5 @@ export const ToolInputSchemas = {
   deploy_agent: DeployAgentInputSchema,
   get_deployment_status: GetDeploymentStatusInputSchema,
   cancel_subscription: CancelSubscriptionInputSchema,
+  renew_subscription: RenewSubscriptionInputSchema,
 } as const;

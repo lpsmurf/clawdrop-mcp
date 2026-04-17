@@ -6,6 +6,8 @@ import {
   DeployAgentOutputSchema,
   GetDeploymentStatusOutputSchema,
   CancelSubscriptionOutputSchema,
+  RenewSubscriptionInputSchema,
+  RenewSubscriptionOutputSchema,
 } from './schemas';
 import { listTiers, getTier, quoteTier } from '../services/tier';
 import { verifyPayment } from '../services/payment';
@@ -18,7 +20,7 @@ import {
   loadFromDisk,
   DeployedAgent,
 } from '../db/memory';
-import { deployViaHFSP, getHFSPStatus, stopViaHFSP } from '../integrations/hfsp';
+import { deployViaHFSP, getHFSPStatus, stopViaHFSP, restartViaHFSP } from '../integrations/hfsp';
 import { logger } from '../utils/logger';
 
 // Load persisted state on startup
@@ -151,6 +153,33 @@ export const tools: Tool[] = [
       required: ['agent_id', 'owner_wallet', 'confirm'],
     },
   },
+  {
+    name: 'renew_subscription',
+    description: 'Renew a Clawdrop agent subscription after payment. Extends the billing period by 30 days and restarts the agent if it was stopped due to non-payment.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: {
+          type: 'string',
+          description: 'The agent ID to renew (from deploy_agent or get_deployment_status)',
+        },
+        owner_wallet: {
+          type: 'string',
+          description: 'Your Solana wallet public key (must match original owner)',
+        },
+        payment_tx_hash: {
+          type: 'string',
+          description: 'Transaction signature of your renewal payment on Solana',
+        },
+        payment_token: {
+          type: 'string',
+          enum: ['SOL', 'USDC', 'USDT'],
+          description: 'Token used for payment (default: SOL)',
+        },
+      },
+      required: ['agent_id', 'owner_wallet', 'payment_tx_hash'],
+    },
+  },
 ];
 
 // ─── Tool dispatcher ──────────────────────────────────────────────────────────
@@ -164,6 +193,7 @@ export async function handleToolCall(toolName: string, toolInput: unknown): Prom
       case 'deploy_agent':        return await handleDeployAgent(toolInput);
       case 'get_deployment_status': return await handleGetDeploymentStatus(toolInput);
       case 'cancel_subscription': return await handleCancelSubscription(toolInput);
+      case 'renew_subscription': return await handleRenewSubscription(toolInput);
       default: throw new Error(`Unknown tool: ${toolName}`);
     }
   } catch (error) {
@@ -368,6 +398,16 @@ async function handleGetDeploymentStatus(input: unknown): Promise<string> {
   const fresh = getAgent(parsed.agent_id)!;
   const uptimeSeconds = Math.floor((Date.now() - fresh.deployed_at.getTime()) / 1000);
 
+  // Build warning message if in grace period or overdue
+  let warning: string | null = null;
+  const now = new Date();
+  if (fresh.subscription.grace_period_end && now < fresh.subscription.grace_period_end) {
+    const hoursLeft = Math.round((fresh.subscription.grace_period_end.getTime() - now.getTime()) / 3_600_000);
+    warning = `⚠️ Payment overdue — agent stops in ${hoursLeft}h. Run renew_subscription to continue.`;
+  } else if (now > fresh.subscription.next_payment_due) {
+    warning = `⚠️ Payment overdue. Renewal required immediately or agent will be stopped.`;
+  }
+
   const response = GetDeploymentStatusOutputSchema.parse({
     agent_id: fresh.agent_id,
     agent_name: fresh.agent_name,
@@ -390,6 +430,7 @@ async function handleGetDeploymentStatus(input: unknown): Promise<string> {
       level: l.level,
       message: l.message,
     })),
+    warning,
   });
 
   return JSON.stringify(response, null, 2);
@@ -426,6 +467,84 @@ async function handleCancelSubscription(input: unknown): Promise<string> {
       `Agent "${agent.agent_name}" has been stopped and subscription cancelled. ` +
       'Your VPS will be decommissioned shortly.',
     stopped_at: new Date().toISOString(),
+  });
+
+  return JSON.stringify(response, null, 2);
+}
+
+async function handleRenewSubscription(input: unknown): Promise<string> {
+  const parsed = ToolInputSchemas.renew_subscription.parse(input);
+
+  // Ownership check
+  const agent = getAgent(parsed.agent_id);
+  if (!agent) throw new Error(`Agent not found: ${parsed.agent_id}`);
+  if (agent.owner_wallet !== parsed.owner_wallet) {
+    throw new Error('Unauthorized: wallet does not match agent owner');
+  }
+
+  // Payment verification (same pattern as deploy_agent)
+  const agentTier = getTier(agent.tier_id);
+  if (!agentTier) throw new Error(`Tier not found: ${agent.tier_id}`);
+
+  if (parsed.payment_tx_hash.startsWith('devnet_') || parsed.payment_tx_hash.startsWith('test_')) {
+    logger.info('[DEV] Skipping on-chain verification for renewal: ' + parsed.payment_tx_hash);
+  } else {
+    const verification = await verifyPaymentTransaction({
+      tx_hash: parsed.payment_tx_hash,
+      expected_recipient: CLAWDROP_CONFIG.WALLET_ADDRESS,
+      min_amount_sol: agentTier.price_sol,
+      network: 'mainnet',
+    });
+    if (!verification.verified) {
+      throw new Error('Renewal payment verification failed: ' + verification.reason);
+    }
+  }
+
+  const wasStopped = agent.status === 'stopped';
+
+  // Extend subscription by 30 days from now (or from next_payment_due if in the future)
+  const baseDate = agent.subscription.next_payment_due > new Date()
+    ? agent.subscription.next_payment_due
+    : new Date();
+  const renewedUntil = new Date(baseDate.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+  // Update agent subscription dates + clear grace period
+  agent.subscription.next_payment_due = renewedUntil;
+  agent.subscription.grace_period_end = null;
+  agent.subscription.payment_history.push({
+    payment_id: `pay_renewal_${Date.now()}`,
+    amount: agentTier.price_sol,
+    token: parsed.payment_token,
+    tx_hash: parsed.payment_tx_hash,
+    timestamp: new Date(),
+    fee_charged_usd: agentTier.price_usd < 100 ? 1.0 : agentTier.price_usd * 0.0035,
+    jupiter_swap: parsed.payment_token !== 'SOL',
+  });
+
+  // Restart via HFSP if agent was stopped
+  let restarted = false;
+  if (wasStopped) {
+    try {
+      await restartViaHFSP(parsed.agent_id);
+      updateAgentStatus(parsed.agent_id, 'running');
+      restarted = true;
+      logger.info({ agent_id: parsed.agent_id }, 'Agent restarted after renewal');
+    } catch (err) {
+      logger.error({ agent_id: parsed.agent_id, err }, 'Failed to restart agent after renewal');
+    }
+  } else {
+    updateAgentStatus(parsed.agent_id, 'running');
+  }
+
+  const response = RenewSubscriptionOutputSchema.parse({
+    agent_id: parsed.agent_id,
+    status: restarted || !wasStopped ? 'running' : 'stopped',
+    renewed_until: renewedUntil.toISOString(),
+    message: wasStopped
+      ? `Agent "${agent.agent_name}" renewed and restarted. Active until ${renewedUntil.toLocaleDateString()}.`
+      : `Subscription renewed. Agent "${agent.agent_name}" active until ${renewedUntil.toLocaleDateString()}.`,
+    was_stopped: wasStopped,
+    restarted,
   });
 
   return JSON.stringify(response, null, 2);

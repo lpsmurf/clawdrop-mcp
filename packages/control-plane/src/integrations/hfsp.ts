@@ -457,3 +457,25 @@ export async function stopViaHFSP(agent_id: string): Promise<void> {
     );
   }
 }
+
+/**
+ * Restart a stopped agent via HFSP.
+ * POSTs to /api/v1/agents/:agent_id/restart
+ */
+export async function restartViaHFSP(agent_id: string): Promise<void> {
+  try {
+    const { url, key } = getHFSPConfig();
+    await axios.post(
+      `${url}/api/v1/agents/${agent_id}/restart`,
+      {},
+      {
+        headers: { Authorization: `Bearer ${key}` },
+        timeout: 30_000,
+      }
+    );
+    logger.info({ agent_id }, 'restartViaHFSP succeeded');
+  } catch (err) {
+    logger.warn({ agent_id, err }, 'restartViaHFSP failed — HFSP may be unreachable');
+    throw err; // Re-throw so caller knows restart failed
+  }
+}
