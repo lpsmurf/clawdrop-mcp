@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Clawdrop — Deploy AI agents that hold crypto</title>
+  <meta name="description" content="Deploy Claude agents with real Solana wallets. Book flights, swap tokens, stake SOL — all from a single command in Claude Code." />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0a0a0a;
+      --surface:   #111111;
+      --border:    #1e1e1e;
+      --text:      #f0f0f0;
+      --muted:     #888;
+      --green:     #00e5a0;
+      --cyan:      #00cfff;
+      --accent-bg: #001a12;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+    }
+
+    a { color: var(--green); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── Layout ── */
+    .container {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    section { padding: 80px 0; }
+    section + section { border-top: 1px solid var(--border); }
+
+    h2 {
+      font-size: clamp(1.5rem, 3vw, 2rem);
+      font-weight: 700;
+      margin-bottom: 40px;
+      color: var(--text);
+    }
+
+    /* ── Nav ── */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(10,10,10,0.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 0;
+    }
+
+    nav .inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    .logo {
+      font-size: 1.2rem;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: var(--text);
+    }
+
+    .logo span { color: var(--green); }
+
+    nav a {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-left: 28px;
+      transition: color 0.2s;
+    }
+    nav a:hover { color: var(--text); text-decoration: none; }
+
+    .nav-cta {
+      background: var(--green);
+      color: #000 !important;
+      padding: 8px 18px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.85rem !important;
+    }
+    .nav-cta:hover { opacity: 0.9; }
+
+    /* ── Hero ── */
+    #hero {
+      padding: 100px 0 80px;
+      text-align: center;
+    }
+
+    .eyebrow {
+      display: inline-block;
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--green);
+      margin-bottom: 20px;
+    }
+
+    h1 {
+      font-size: clamp(2.2rem, 6vw, 3.8rem);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -1.5px;
+      margin-bottom: 20px;
+      max-width: 800px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    h1 em {
+      font-style: normal;
+      background: linear-gradient(90deg, var(--green), var(--cyan));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero-sub {
+      color: var(--muted);
+      font-size: 1.15rem;
+      max-width: 540px;
+      margin: 0 auto 40px;
+    }
+
+    /* ── Install block ── */
+    .install-wrap {
+      display: inline-flex;
+      align-items: center;
+      background: #0d0d0d;
+      border: 1px solid #2a2a2a;
+      border-radius: 10px;
+      padding: 4px 4px 4px 20px;
+      gap: 12px;
+      max-width: 100%;
+    }
+
+    .install-cmd {
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+      font-size: 0.88rem;
+      color: var(--green);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .copy-btn {
+      background: var(--green);
+      color: #000;
+      border: none;
+      border-radius: 7px;
+      padding: 10px 18px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: opacity 0.15s;
+      flex-shrink: 0;
+    }
+    .copy-btn:hover { opacity: 0.85; }
+
+    .badges {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 28px;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 6px 14px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+
+    .badge.green { border-color: var(--green); color: var(--green); background: rgba(0,229,160,0.05); }
+
+    /* ── Demo placeholder ── */
+    .demo-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      height: 340px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      color: var(--muted);
+    }
+
+    .demo-icon {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.6rem;
+    }
+
+    .demo-box p { font-size: 1rem; }
+    .demo-box span { font-size: 0.8rem; }
+
+    /* ── Feature cards ── */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 20px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 28px 24px;
+      transition: border-color 0.2s;
+    }
+    .card:hover { border-color: #2e2e2e; }
+
+    .card-icon {
+      font-size: 1.8rem;
+      margin-bottom: 14px;
+      display: block;
+    }
+
+    .card h3 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    .card p {
+      font-size: 0.88rem;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .card ul {
+      list-style: none;
+      margin-top: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .card ul li {
+      font-size: 0.8rem;
+      color: #666;
+      padding-left: 14px;
+      position: relative;
+    }
+    .card ul li::before {
+      content: '·';
+      position: absolute;
+      left: 0;
+      color: var(--green);
+    }
+
+    /* ── Pricing ── */
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 20px;
+    }
+
+    .plan {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 28px 24px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .plan.featured {
+      border-color: var(--green);
+      background: var(--accent-bg);
+    }
+
+    .plan-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--green);
+      margin-bottom: 8px;
+    }
+
+    .plan h3 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .plan .price {
+      font-size: 2rem;
+      font-weight: 800;
+      color: var(--text);
+      line-height: 1;
+      margin: 12px 0 4px;
+    }
+
+    .plan .price sup { font-size: 1rem; vertical-align: top; margin-top: 6px; }
+    .plan .period { font-size: 0.8rem; color: var(--muted); margin-bottom: 20px; }
+
+    .plan-features {
+      list-style: none;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 24px;
+    }
+
+    .plan-features li {
+      font-size: 0.85rem;
+      color: var(--muted);
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .plan-features li::before {
+      content: '✓';
+      color: var(--green);
+      flex-shrink: 0;
+      font-weight: 700;
+    }
+
+    .plan-btn {
+      display: block;
+      text-align: center;
+      padding: 11px;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+      cursor: pointer;
+      transition: all 0.15s;
+      text-decoration: none;
+    }
+    .plan-btn:hover { border-color: var(--green); color: var(--green); text-decoration: none; }
+
+    .plan.featured .plan-btn {
+      background: var(--green);
+      color: #000;
+      border-color: var(--green);
+    }
+    .plan.featured .plan-btn:hover { opacity: 0.88; color: #000; }
+
+    /* ── How it works ── */
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 32px;
+      position: relative;
+    }
+
+    .step {
+      text-align: center;
+      padding: 0 8px;
+    }
+
+    .step-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: var(--accent-bg);
+      border: 1px solid var(--green);
+      color: var(--green);
+      font-size: 1.1rem;
+      font-weight: 800;
+      margin-bottom: 18px;
+    }
+
+    .step h3 {
+      font-size: 1rem;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    .step p {
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+
+    .step code {
+      display: inline-block;
+      margin-top: 12px;
+      padding: 8px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-family: monospace;
+      font-size: 0.78rem;
+      color: var(--green);
+      white-space: nowrap;
+    }
+
+    /* ── Footer ── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 40px 0;
+      text-align: center;
+    }
+
+    .footer-logo {
+      font-size: 1.1rem;
+      font-weight: 800;
+      margin-bottom: 16px;
+      color: var(--text);
+    }
+    .footer-logo span { color: var(--green); }
+
+    footer p {
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    footer a { color: var(--muted); }
+    footer a:hover { color: var(--green); }
+
+    .footer-links {
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 640px) {
+      section { padding: 60px 0; }
+      #hero { padding: 72px 0 60px; }
+
+      .install-wrap {
+        flex-direction: column;
+        padding: 16px;
+        gap: 10px;
+        text-align: center;
+      }
+      .install-cmd { white-space: normal; word-break: break-all; }
+      .copy-btn { width: 100%; }
+
+      nav .nav-links { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav>
+  <div class="inner">
+    <span class="logo">Claw<span>drop</span></span>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#how-it-works">How it works</a>
+      <a href="https://github.com/lpsmurf/clawdrop-mcp" target="_blank" rel="noopener">GitHub</a>
+      <a href="#pricing" class="nav-cta">Get started</a>
+    </div>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section id="hero">
+  <div class="container">
+    <span class="eyebrow">AI Agent Infrastructure for Solana</span>
+    <h1>Deploy AI agents that<br /><em>hold crypto</em></h1>
+    <p class="hero-sub">
+      One command in Claude Code. Your agent gets a wallet, books flights,
+      swaps tokens, and stakes SOL — automatically.
+    </p>
+
+    <div class="install-wrap">
+      <span class="install-cmd" id="install-cmd">claude mcp add clawdrop -- npx -y github:lpsmurf/clawdrop-mcp</span>
+      <button class="copy-btn" onclick="copyInstall()">Copy</button>
+    </div>
+
+    <div class="badges">
+      <span class="badge green">&#10003; Works with Claude Code</span>
+      <span class="badge">Solana Mainnet</span>
+      <span class="badge">22 tools</span>
+      <span class="badge">5 bundles</span>
+    </div>
+  </div>
+</section>
+
+<!-- Demo GIF -->
+<section id="demo">
+  <div class="container">
+    <div class="demo-box">
+      <div class="demo-icon">&#9654;</div>
+      <p>Demo coming soon</p>
+      <span>Watch an agent book flights and swap tokens in real time</span>
+    </div>
+  </div>
+</section>
+
+<!-- Features -->
+<section id="features">
+  <div class="container">
+    <h2>What your agent can do</h2>
+    <div class="cards">
+
+      <div class="card">
+        <span class="card-icon">&#128176;</span>
+        <h3>Solana Wallet</h3>
+        <p>Your agent holds real SOL and SPL tokens. It can send, receive, and swap — all on-chain.</p>
+        <ul>
+          <li>check_balance</li>
+          <li>swap_tokens (Jupiter)</li>
+          <li>send_tokens</li>
+          <li>get_token_price</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <span class="card-icon">&#9992;&#65039;</span>
+        <h3>Flights &amp; Hotels</h3>
+        <p>Search and book real flights and hotels. Pay with crypto — Clawdrop handles the conversion.</p>
+        <ul>
+          <li>search_flights</li>
+          <li>book_flight</li>
+          <li>search_hotels</li>
+          <li>book_hotel</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <span class="card-icon">&#128202;</span>
+        <h3>DeFi &amp; Staking</h3>
+        <p>Stake SOL via Marinade, track positions, and surface the best yield opportunities on Solana.</p>
+        <ul>
+          <li>stake_sol</li>
+          <li>get_staking_positions</li>
+          <li>get_defi_overview</li>
+          <li>get_yield_opportunities</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <span class="card-icon">&#128269;</span>
+        <h3>Web Research</h3>
+        <p>Search the web, summarize URLs, and pull live token data from DexScreener.</p>
+        <ul>
+          <li>web_search</li>
+          <li>get_token_info</li>
+          <li>get_trending_tokens</li>
+          <li>get_news</li>
+        </ul>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- Pricing -->
+<section id="pricing">
+  <div class="container">
+    <h2>Tiers &amp; Pricing</h2>
+    <div class="pricing-grid">
+
+      <div class="plan featured">
+        <div class="plan-label">Start here</div>
+        <h3>Explorer</h3>
+        <div class="price"><sup>$</sup>29</div>
+        <div class="period">per month</div>
+        <ul class="plan-features">
+          <li>1 hosted agent</li>
+          <li>Shared runtime (512MB)</li>
+          <li>Solana + Research bundles</li>
+          <li>Telegram bot included</li>
+          <li>Community support</li>
+        </ul>
+        <a href="#" class="plan-btn">Get started</a>
+      </div>
+
+      <div class="plan">
+        <div class="plan-label">&nbsp;</div>
+        <h3>Starter</h3>
+        <div class="price"><sup>$</sup>100</div>
+        <div class="period">per month</div>
+        <ul class="plan-features">
+          <li>1 hosted agent</li>
+          <li>Shared runtime (2GB)</li>
+          <li>Solana + Research + Treasury</li>
+          <li>Telegram bot included</li>
+          <li>500 tx/month</li>
+        </ul>
+        <a href="#" class="plan-btn">Get started</a>
+      </div>
+
+      <div class="plan">
+        <div class="plan-label">&nbsp;</div>
+        <h3>Professional</h3>
+        <div class="price"><sup>$</sup>200</div>
+        <div class="period">per month</div>
+        <ul class="plan-features">
+          <li>1 dedicated agent</li>
+          <li>Dedicated runtime (4GB)</li>
+          <li>All bundles + Travel</li>
+          <li>5 wallets, audit logs</li>
+          <li>99.5% uptime SLA</li>
+        </ul>
+        <a href="#" class="plan-btn">Get started</a>
+      </div>
+
+      <div class="plan">
+        <div class="plan-label">&nbsp;</div>
+        <h3>Enterprise</h3>
+        <div class="price"><sup>$</sup>400</div>
+        <div class="period">per month</div>
+        <ul class="plan-features">
+          <li>Up to 5 agents</li>
+          <li>Custom dedicated runtime</li>
+          <li>All bundles + custom dev</li>
+          <li>Unlimited wallets + multi-sig</li>
+          <li>99.9% SLA, 4h support</li>
+        </ul>
+        <a href="#" class="plan-btn">Get started</a>
+      </div>
+
+    </div>
+    <p style="text-align:center;margin-top:24px;font-size:0.82rem;color:var(--muted);">
+      Pay with SOL, USDC, USDT, or HERD &mdash; 10% discount when paying in HERD &middot; Annual billing: 20% off
+    </p>
+  </div>
+</section>
+
+<!-- How it works -->
+<section id="how-it-works">
+  <div class="container">
+    <h2>How it works</h2>
+    <div class="steps">
+
+      <div class="step">
+        <div class="step-num">1</div>
+        <h3>Install the MCP</h3>
+        <p>One command in Claude Code adds Clawdrop as an MCP server. No config files. No YAML.</p>
+        <code>claude mcp add clawdrop ...</code>
+      </div>
+
+      <div class="step">
+        <div class="step-num">2</div>
+        <h3>Pay with Phantom</h3>
+        <p>Claude walks you through tier selection and generates a payment address. Send SOL from Phantom. Verified on-chain in seconds.</p>
+      </div>
+
+      <div class="step">
+        <div class="step-num">3</div>
+        <h3>Agent deployed</h3>
+        <p>Your container is live on Hostinger VPS. Wallet provisioned. Bundles installed. Talk to your agent immediately.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer>
+  <div class="container">
+    <div class="footer-logo">Claw<span>drop</span></div>
+    <div class="footer-links">
+      <a href="https://github.com/lpsmurf/clawdrop-mcp" target="_blank" rel="noopener">GitHub</a>
+      <a href="#pricing">Pricing</a>
+      <a href="mailto:security@clawdrop.dev">Security</a>
+    </div>
+    <p>Built with <a href="https://claude.ai/code" target="_blank" rel="noopener">Claude</a></p>
+    <p style="margin-top:8px;font-size:0.75rem;">AI Agent Infrastructure for Solana &mdash; 2026</p>
+  </div>
+</footer>
+
+<script>
+  function copyInstall() {
+    const cmd = document.getElementById('install-cmd').textContent;
+    navigator.clipboard.writeText(cmd).then(function() {
+      const btn = document.querySelector('.copy-btn');
+      btn.textContent = 'Copied!';
+      setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
+    });
+  }
+</script>
+
+</body>
+</html>
