@@ -326,3 +326,161 @@ export async function getTransactionDetails(tx_hash: string): Promise<{
     return null;
   }
 }
+
+/**
+ * Verify a Solana payment transaction using Helius RPC.
+ * Checks recipient, amount, and confirmation status.
+ *
+ * @param params.tx_hash            - Transaction signature to verify
+ * @param params.expected_recipient - Expected destination account (CLAWDROP_WALLET_ADDRESS)
+ * @param params.min_amount_sol     - Minimum acceptable SOL transfer amount (tier price)
+ * @param params.network            - 'mainnet' or 'devnet'
+ */
+export async function verifyPaymentTransaction(params: {
+  tx_hash: string;
+  expected_recipient: string;
+  min_amount_sol: number;
+  network: 'mainnet' | 'devnet';
+}): Promise<{
+  verified: boolean;
+  reason: string;
+  actual_amount_sol?: number;
+  actual_recipient?: string;
+  confirmation_status?: string;
+}> {
+  const { tx_hash, expected_recipient, min_amount_sol, network } = params;
+
+  try {
+    logger.info({ tx_hash, network, expected_recipient, min_amount_sol }, 'Verifying payment transaction');
+
+    // Select RPC endpoint based on network
+    const HELIUS_MAINNET_RPC = process.env.HELIUS_MAINNET_RPC || 'https://mainnet.helius-rpc.com/';
+    const HELIUS_DEVNET_RPC  = process.env.HELIUS_DEVNET_RPC  || 'https://devnet.helius-rpc.com/';
+    const apiKey = process.env.HELIUS_API_KEY;
+
+    const baseUrl = network === 'mainnet' ? HELIUS_MAINNET_RPC : HELIUS_DEVNET_RPC;
+    const rpcUrl  = apiKey ? `${baseUrl}?api-key=${apiKey}` : baseUrl;
+
+    // Use getTransaction to get full tx including account keys and balances
+    const response = await axios.post(
+      rpcUrl,
+      {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'getTransaction',
+        params: [
+          tx_hash,
+          {
+            encoding: 'json',
+            maxSupportedTransactionVersion: 0,
+            commitment: 'confirmed',
+          },
+        ],
+      },
+      {
+        timeout: 15000,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+
+    if (response.data.error) {
+      logger.error({ error: response.data.error, tx_hash }, 'Helius RPC getTransaction error');
+      return { verified: false, reason: `RPC error: ${response.data.error.message}` };
+    }
+
+    const tx = response.data.result;
+    if (!tx) {
+      return { verified: false, reason: 'Transaction not found on chain' };
+    }
+
+    // Check confirmation status
+    const confirmationStatus: string = tx.meta?.confirmationStatus ?? 'unknown';
+    if (confirmationStatus !== 'confirmed' && confirmationStatus !== 'finalized') {
+      return {
+        verified: false,
+        reason: `Transaction not confirmed (status: ${confirmationStatus})`,
+        confirmation_status: confirmationStatus,
+      };
+    }
+
+    // Check for transaction-level error
+    if (tx.meta?.err) {
+      return {
+        verified: false,
+        reason: `Transaction failed on-chain: ${JSON.stringify(tx.meta.err)}`,
+        confirmation_status: confirmationStatus,
+      };
+    }
+
+    // Extract account keys — index 0 = sender, index 1 = recipient
+    const accountKeys: string[] =
+      tx.transaction?.message?.accountKeys ?? [];
+
+    if (accountKeys.length < 2) {
+      return {
+        verified: false,
+        reason: 'Transaction has fewer than 2 account keys — cannot determine recipient',
+        confirmation_status: confirmationStatus,
+      };
+    }
+
+    const actual_recipient: string = accountKeys[1];
+
+    // Verify recipient
+    if (actual_recipient !== expected_recipient) {
+      logger.warn({ actual_recipient, expected_recipient, tx_hash }, 'Recipient mismatch');
+      return {
+        verified: false,
+        reason: `Wrong recipient: expected ${expected_recipient}, got ${actual_recipient}`,
+        actual_recipient,
+        confirmation_status: confirmationStatus,
+      };
+    }
+
+    // Calculate SOL transferred to recipient via balance diff (lamports → SOL)
+    const preBalances: number[]  = tx.meta?.preBalances  ?? [];
+    const postBalances: number[] = tx.meta?.postBalances ?? [];
+
+    if (preBalances.length < 2 || postBalances.length < 2) {
+      return {
+        verified: false,
+        reason: 'Cannot read balance arrays from transaction metadata',
+        actual_recipient,
+        confirmation_status: confirmationStatus,
+      };
+    }
+
+    // Recipient's balance increase = lamports received
+    const lamportsReceived = postBalances[1] - preBalances[1];
+    const actual_amount_sol = lamportsReceived / 1e9;
+
+    logger.info({ actual_amount_sol, min_amount_sol, tx_hash }, 'SOL amount check');
+
+    // Check amount with 1% slippage tolerance
+    if (actual_amount_sol < min_amount_sol * 0.99) {
+      return {
+        verified: false,
+        reason: `Insufficient amount: expected ${min_amount_sol} SOL, received ${actual_amount_sol.toFixed(6)} SOL`,
+        actual_amount_sol,
+        actual_recipient,
+        confirmation_status: confirmationStatus,
+      };
+    }
+
+    logger.info({ tx_hash, actual_amount_sol, actual_recipient, confirmationStatus }, 'Payment transaction verified');
+
+    return {
+      verified: true,
+      reason: 'Payment verified: confirmed, correct recipient, sufficient amount',
+      actual_amount_sol,
+      actual_recipient,
+      confirmation_status: confirmationStatus,
+    };
+  } catch (error) {
+    logger.error({ error, tx_hash }, 'verifyPaymentTransaction failed');
+    return {
+      verified: false,
+      reason: `Verification error: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}

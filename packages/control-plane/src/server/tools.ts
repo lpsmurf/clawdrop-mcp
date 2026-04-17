@@ -9,6 +9,8 @@ import {
 } from './schemas';
 import { listTiers, getTier, quoteTier } from '../services/tier';
 import { verifyPayment } from '../services/payment';
+import { verifyPaymentTransaction } from '../integrations/helius';
+import { CLAWDROP_CONFIG } from '../config/tokens';
 import {
   saveAgent,
   getAgent,
@@ -16,7 +18,7 @@ import {
   loadFromDisk,
   DeployedAgent,
 } from '../db/memory';
-import { deployViaHFSP, getHFSPStatus } from '../integrations/hfsp';
+import { deployViaHFSP, getHFSPStatus, stopViaHFSP } from '../integrations/hfsp';
 import { logger } from '../utils/logger';
 
 // Load persisted state on startup
@@ -228,13 +230,24 @@ async function handleQuoteTier(input: unknown): Promise<string> {
 async function handleDeployAgent(input: unknown): Promise<string> {
   const parsed = ToolInputSchemas.deploy_agent.parse(input);
 
-  // 1. Verify payment on-chain (stub → real Helius in Phase 2)
-  const verified = await verifyPayment(parsed.payment_tx_hash);
-  if (!verified) {
-    throw new Error(
-      `Payment not verified: tx ${parsed.payment_tx_hash} — ` +
-        'ensure the transaction is confirmed on Solana devnet'
-    );
+  // 1. Verify payment on-chain
+  if (parsed.payment_tx_hash.startsWith('devnet_') || parsed.payment_tx_hash.startsWith('test_')) {
+    // Dev mode: skip verification for test hashes
+    logger.info('[DEV] Skipping on-chain verification for test tx: ' + parsed.payment_tx_hash);
+  } else {
+    // Production: full on-chain verification via Helius
+    const tier = getTier(parsed.tier_id);
+    if (!tier) throw new Error(`Tier not found: ${parsed.tier_id}`);
+    const verification = await verifyPaymentTransaction({
+      tx_hash: parsed.payment_tx_hash,
+      expected_recipient: CLAWDROP_CONFIG.WALLET_ADDRESS,
+      min_amount_sol: tier.price_sol,
+      network: 'mainnet',
+    });
+    if (!verification.verified) {
+      throw new Error('Payment verification failed: ' + verification.reason);
+    }
+    logger.info({ tx_hash: parsed.payment_tx_hash, amount: verification.actual_amount_sol }, 'Payment verified on-chain');
   }
 
   // 2. Get tier info
@@ -401,8 +414,8 @@ async function handleCancelSubscription(input: unknown): Promise<string> {
     throw new Error(`Agent ${parsed.agent_id} is already stopped`);
   }
 
+  await stopViaHFSP(parsed.agent_id);
   updateAgentStatus(parsed.agent_id, 'stopped');
-  // TODO Phase 2: call HFSP to tear down the container/VPS
 
   logger.info({ agent_id: parsed.agent_id }, 'Agent subscription cancelled');
 

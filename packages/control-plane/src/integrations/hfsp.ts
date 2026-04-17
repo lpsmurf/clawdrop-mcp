@@ -420,3 +420,40 @@ export async function getHFSPStatus(agent_id: string): Promise<Partial<AgentStat
     };
   }
 }
+
+/**
+ * Stop a running agent via HFSP.
+ * Used by subscription enforcer and cancel_subscription flow.
+ * 
+ * POSTs to /api/v1/agents/:agent_id/stop with Bearer auth.
+ * If HFSP is unreachable, logs the error but does NOT throw —
+ * the caller is responsible for updating local state regardless.
+ *
+ * @param agent_id - The agent ID to stop
+ */
+export async function stopViaHFSP(agent_id: string): Promise<void> {
+  try {
+    logger.info({ agent_id }, 'Stopping agent via HFSP');
+    const { url, key } = getHFSPConfig();
+
+    await axios.post(
+      `${url}/api/v1/agents/${agent_id}/stop`,
+      {},
+      {
+        headers: {
+          Authorization: `Bearer ${key}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 15000,
+      }
+    );
+
+    logger.info({ agent_id }, 'Agent stopped via HFSP');
+  } catch (error) {
+    // Log but do not throw — local state update must still proceed
+    logger.error(
+      { agent_id, error: error instanceof Error ? error.message : String(error) },
+      'stopViaHFSP failed — HFSP may be unreachable; continuing with local state update'
+    );
+  }
+}
