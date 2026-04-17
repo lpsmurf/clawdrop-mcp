@@ -24,6 +24,19 @@ export interface Tier {
  * All bundles available at any tier
  */
 const TIERS: Record<string, Tier> = {
+  tier_explorer: {
+    id: "tier_explorer",
+    name: "🌱 Explorer",
+    description: "Shared container for experimenting — try Clawdrop before committing",
+    vps_type: "shared-docker",
+    vps_capacity: "1.5GB RAM, 0.5 vCPU, Shared",
+    price_sol: 0.12, // ~$29/month at $250/SOL
+    price_usd: 29,
+    bundles_included: ["solana", "research", "treasury", "travel-crypto-pro"],
+    max_agents: 1,
+    monthly_renewal: true,
+  },
+
   tier_a: {
     id: "tier_a",
     name: "Tier A - Starter",
@@ -125,7 +138,7 @@ export function validateBundles(tier_id: string, bundles: string[]): boolean {
   }
 
   // For MVP: all bundles are available at all tiers
-  const validBundles = ["solana", "research", "treasury"];
+  const validBundles = ["solana", "research", "treasury", "travel-crypto-pro"];
   return bundles.every((b) => validBundles.includes(b));
 }
 
