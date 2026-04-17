@@ -5,7 +5,8 @@
  * Single container that loads ALL Clawdrop tool bundles:
  *   - mcp-wallet:          check_balance, get_token_price, swap_tokens, send_tokens,
  *                          get_transaction_history, get_fee_summary
- *   - travel-crypto-pro:   search_flights, price_flight, book_flight
+ *   - travel-crypto-pro:   search_flights, price_flight, book_flight, search_hotels, book_hotel
+ *   - treasury:            stake_sol, get_staking_positions, get_defi_overview, get_yield_opportunities
  *   - research:            web_search, summarize_url, get_news, get_token_info, get_trending_tokens, search_token
  *
  * Environment:
@@ -15,6 +16,7 @@
  *   TELEGRAM_BOT_TOKEN   — Telegram bot token
  *   HELIUS_API_KEY       — Helius RPC API key
  *   BRAVE_API_KEY        — (optional) Brave Search API key for web_search
+ *   SOLANA_RPC_URL       — Solana RPC endpoint (required for staking tools)
  */
 
 import 'dotenv/config';
@@ -149,6 +151,35 @@ const travelTools: Tool[] = [
       required: ['offer_id', 'given_name', 'family_name', 'email', 'phone', 'date_of_birth', 'gender'],
     },
   },
+  {
+    name: 'search_hotels',
+    description: 'Search for available hotels in a city. Returns up to 5 options at different price points with amenities and booking tokens.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        city: { type: 'string', description: 'City name (e.g. "New York", "Paris", "Tokyo")' },
+        check_in: { type: 'string', description: 'Check-in date YYYY-MM-DD' },
+        check_out: { type: 'string', description: 'Check-out date YYYY-MM-DD' },
+        guests: { type: 'number', description: 'Number of guests (default: 1)' },
+        max_price_usd: { type: 'number', description: 'Maximum price per night in USD (optional filter)' },
+      },
+      required: ['city', 'check_in', 'check_out'],
+    },
+  },
+  {
+    name: 'book_hotel',
+    description: 'Book a hotel using a booking_token from search_hotels. Returns a confirmation number and full booking details.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        booking_token: { type: 'string', description: 'Opaque booking token returned by search_hotels' },
+        guest_name: { type: 'string', description: 'Full name of the primary guest' },
+        guest_email: { type: 'string', description: 'Guest email address for confirmation' },
+        payment_method: { type: 'string', description: 'Payment method: "card", "sol", or "usdc"' },
+      },
+      required: ['booking_token', 'guest_name', 'guest_email', 'payment_method'],
+    },
+  },
 ];
 
 const researchToolDefs: Tool[] = [
@@ -216,7 +247,59 @@ const researchToolDefs: Tool[] = [
   },
 ];
 
-const allTools: Tool[] = [...walletTools, ...travelTools, ...researchToolDefs];
+const treasuryTools: Tool[] = [
+  {
+    name: 'stake_sol',
+    description: 'Stake SOL via Marinade liquid staking — converts SOL to mSOL and earns yield. Requires WALLET_PRIVATE_KEY and SOLANA_RPC_URL.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        amount_sol: { type: 'number', description: 'Amount of SOL to stake' },
+        wallet: { type: 'string', description: 'Wallet address (defaults to your wallet)' },
+      },
+      required: ['amount_sol'],
+    },
+  },
+  {
+    name: 'get_staking_positions',
+    description: 'Get current mSOL staking positions: balance, USD value, and estimated APY. Requires SOLANA_RPC_URL.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        wallet: { type: 'string', description: 'Wallet address (defaults to your wallet)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'get_defi_overview',
+    description: 'Full DeFi portfolio overview: SOL balance, SPL tokens, and staking positions with USD values.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        wallet: { type: 'string', description: 'Wallet address (defaults to your wallet)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'get_yield_opportunities',
+    description: 'Get top Solana yield opportunities (liquid staking, LP pools, lending) with APY and risk ratings.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        risk_tolerance: {
+          type: 'string',
+          enum: ['low', 'medium', 'high'],
+          description: 'Filter by risk level (optional)',
+        },
+      },
+      required: [],
+    },
+  },
+];
+
+const allTools: Tool[] = [...walletTools, ...travelTools, ...researchToolDefs, ...treasuryTools];
 
 // ─── Tool set membership ──────────────────────────────────────────────────────
 
@@ -224,8 +307,9 @@ const WALLET_TOOLS = new Set([
   'check_balance', 'get_token_price', 'swap_tokens',
   'send_tokens', 'get_transaction_history', 'get_fee_summary',
 ]);
-const TRAVEL_TOOLS = new Set(['search_flights', 'price_flight', 'book_flight']);
+const TRAVEL_TOOLS = new Set(['search_flights', 'price_flight', 'book_flight', 'search_hotels', 'book_hotel']);
 const RESEARCH_TOOLS = new Set(['web_search', 'summarize_url', 'get_news', 'get_token_info', 'get_trending_tokens', 'search_token']);
+const TREASURY_TOOLS = new Set(['stake_sol', 'get_staking_positions', 'get_defi_overview', 'get_yield_opportunities']);
 
 // ─── Routing ──────────────────────────────────────────────────────────────────
 
@@ -253,7 +337,8 @@ async function dispatchToolCall(
   if (TRAVEL_TOOLS.has(name)) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mod = await import(siblingPath('bundles/travel-crypto-pro/src/tools/flights.js')) as any;
-    const result: unknown = await mod.handleFlightTool(name, input);
+    const handler = mod.handleTravelTool ?? mod.handleFlightTool;
+    const result: unknown = await handler(name, input);
     return JSON.stringify(result, null, 2);
   }
 
@@ -261,6 +346,13 @@ async function dispatchToolCall(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mod = await import(siblingPath('bundles/research/dist/index.js')) as any;
     const result: unknown = await mod.handleResearchTool(name, input);
+    return JSON.stringify(result, null, 2);
+  }
+
+  if (TREASURY_TOOLS.has(name)) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mod = await import(siblingPath('bundles/treasury/src/index.js')) as any;
+    const result: unknown = await mod.handleTreasuryTool(name, input);
     return JSON.stringify(result, null, 2);
   }
 
@@ -299,5 +391,5 @@ if (process.env.TELEGRAM_BOT_TOKEN) {
 }
 
 console.error(
-  'clawdrop-openclaw MCP running (stdio) — bundles: mcp-wallet, travel-crypto-pro, research'
+  'clawdrop-openclaw MCP running (stdio) — bundles: mcp-wallet, travel-crypto-pro, research, treasury — 21 tools'
 );

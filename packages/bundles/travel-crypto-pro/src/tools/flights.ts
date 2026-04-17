@@ -244,3 +244,33 @@ export async function handleFlightTool(
     };
   }
 }
+
+// ─── Hotel tool re-exports ────────────────────────────────────────────────────
+// These are wired into handleFlightTool so OpenClaw's single import covers all travel tools.
+
+export { searchHotelsTool, bookHotelTool } from './hotels.js';
+
+/**
+ * Extended dispatcher — called by OpenClaw for ALL travel tools (flights + hotels).
+ * Delegates to handleFlightTool for flight tools and hotel handlers for hotel tools.
+ */
+import { handleSearchHotels, handleBookHotel } from './hotels.js';
+
+const HOTEL_TOOLS = new Set(['search_hotels', 'book_hotel']);
+
+const _originalHandleFlightTool = handleFlightTool;
+
+export async function handleTravelTool(
+  toolName: string,
+  toolInput: Record<string, unknown>
+): Promise<unknown> {
+  if (HOTEL_TOOLS.has(toolName)) {
+    switch (toolName) {
+      case 'search_hotels':
+        return handleSearchHotels(toolInput);
+      case 'book_hotel':
+        return handleBookHotel(toolInput);
+    }
+  }
+  return _originalHandleFlightTool(toolName, toolInput);
+}
