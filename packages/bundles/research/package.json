@@ -1,0 +1,19 @@
+{
+  "name": "@clawdrop/research",
+  "version": "1.0.0",
+  "description": "Research tool bundle for Clawdrop agents — web search, URL summarization, news",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "@clawdrop/openclaw",
+  "version": "1.0.0",
+  "description": "OpenClaw — combined MCP stdio agent container with all Clawdrop tool bundles",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "axios": "^1.9.0",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}
