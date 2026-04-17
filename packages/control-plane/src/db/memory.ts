@@ -45,6 +45,9 @@ export interface DeployedAgent {
     level: 'info' | 'warn' | 'error';
     message: string;
   }>;
+  is_public?: boolean;
+  public_description?: string;
+  tags?: string[];
 }
 
 // ─── In-memory store ──────────────────────────────────────────────────────────
@@ -141,6 +144,17 @@ export function getAgent(agent_id: string): DeployedAgent | null {
 export function listAgents(owner_wallet?: string): DeployedAgent[] {
   const all = Array.from(agents.values());
   return owner_wallet ? all.filter(a => a.owner_wallet === owner_wallet) : all;
+}
+
+export function listPublicAgents(tag?: string, bundle?: string): DeployedAgent[] {
+  let result = Array.from(agents.values()).filter(a => a.is_public === true);
+  if (tag) {
+    result = result.filter(a => a.tags?.includes(tag));
+  }
+  if (bundle) {
+    result = result.filter(a => a.bundles.includes(bundle as DeployedAgent['bundles'][number]));
+  }
+  return result;
 }
 
 export function updateAgentStatus(agent_id: string, status: AgentStatus): boolean {

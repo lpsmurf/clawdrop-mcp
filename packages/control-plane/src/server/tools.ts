@@ -16,10 +16,12 @@ import { CLAWDROP_CONFIG } from '../config/tokens';
 import {
   saveAgent,
   getAgent,
+  listAgents,
   updateAgentStatus,
   loadFromDisk,
   DeployedAgent,
 } from '../db/memory';
+import { getCredits, topUpCredits, TOOL_COSTS_USD } from '../services/credits';
 import { deployViaHFSP, getHFSPStatus, stopViaHFSP, restartViaHFSP } from '../integrations/hfsp';
 import { logger } from '../utils/logger';
 
@@ -180,6 +182,32 @@ export const tools: Tool[] = [
       required: ['agent_id', 'owner_wallet', 'payment_tx_hash'],
     },
   },
+  {
+    name: 'get_credits',
+    description: 'Check your agent\'s credit balance for premium tool calls (web search, flight booking, etc.)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string' },
+        owner_wallet: { type: 'string' },
+      },
+      required: ['agent_id', 'owner_wallet'],
+    },
+  },
+  {
+    name: 'top_up_credits',
+    description: 'Add USDC credits to your agent for premium tool calls. Send USDC to CLAWDROP_WALLET_ADDRESS then provide the tx hash.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string' },
+        owner_wallet: { type: 'string' },
+        amount_usd: { type: 'number', description: 'Amount in USD to credit' },
+        payment_tx_hash: { type: 'string', description: 'Transaction hash of your USDC payment' },
+      },
+      required: ['agent_id', 'owner_wallet', 'amount_usd', 'payment_tx_hash'],
+    },
+  },
 ];
 
 // ─── Tool dispatcher ──────────────────────────────────────────────────────────
@@ -194,6 +222,8 @@ export async function handleToolCall(toolName: string, toolInput: unknown): Prom
       case 'get_deployment_status': return await handleGetDeploymentStatus(toolInput);
       case 'cancel_subscription': return await handleCancelSubscription(toolInput);
       case 'renew_subscription': return await handleRenewSubscription(toolInput);
+      case 'get_credits':       return await handleGetCredits(toolInput);
+      case 'top_up_credits':    return await handleTopUpCredits(toolInput);
       default: throw new Error(`Unknown tool: ${toolName}`);
     }
   } catch (error) {
@@ -283,6 +313,15 @@ async function handleDeployAgent(input: unknown): Promise<string> {
   // 2. Get tier info
   const tier = getTier(parsed.tier_id);
   if (!tier) throw new Error(`Tier not found: ${parsed.tier_id}`);
+
+  // Enforce max agents per wallet per tier
+  const walletAgents = listAgents(parsed.owner_wallet).filter(a => a.status === 'running' || a.status === 'provisioning');
+  if (walletAgents.length >= tier.max_agents) {
+    throw new Error(
+      `Max agents reached for ${tier.name}: ${tier.max_agents} agent(s) allowed. ` +
+      `You have ${walletAgents.length} running. Cancel one or upgrade your tier.`
+    );
+  }
 
   // 3. Deploy via HFSP
   const agent_id = `agent_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -548,4 +587,48 @@ async function handleRenewSubscription(input: unknown): Promise<string> {
   });
 
   return JSON.stringify(response, null, 2);
+}
+
+async function handleGetCredits(input: unknown): Promise<string> {
+  const { agent_id, owner_wallet } = (await import('zod')).z.object({ agent_id: (await import('zod')).z.string(), owner_wallet: (await import('zod')).z.string() }).parse(input);
+  const agent = getAgent(agent_id);
+  if (!agent) throw new Error('Agent not found');
+  if (agent.owner_wallet !== owner_wallet) throw new Error('Unauthorized');
+  const ledger = getCredits(agent_id);
+  return JSON.stringify({
+    agent_id,
+    balance_usd: ledger.balance_usd,
+    total_spent_usd: ledger.total_spent_usd,
+    recent_transactions: ledger.transactions.slice(-10),
+    tool_costs: TOOL_COSTS_USD,
+  }, null, 2);
+}
+
+async function handleTopUpCredits(input: unknown): Promise<string> {
+  const { z } = await import('zod');
+  const parsed = z.object({
+    agent_id: z.string(),
+    owner_wallet: z.string(),
+    amount_usd: z.number().positive(),
+    payment_tx_hash: z.string(),
+  }).parse(input);
+
+  const agent = getAgent(parsed.agent_id);
+  if (!agent) throw new Error('Agent not found');
+  if (agent.owner_wallet !== parsed.owner_wallet) throw new Error('Unauthorized');
+
+  // Dev bypass
+  if (!parsed.payment_tx_hash.startsWith('devnet_') && !parsed.payment_tx_hash.startsWith('test_')) {
+    // TODO: verify USDC payment on-chain (use verifyPaymentTransaction adapted for USDC)
+    logger.info({ tx: parsed.payment_tx_hash }, 'Credit top-up payment (mainnet verify TODO)');
+  }
+
+  const ledger = topUpCredits(parsed.agent_id, parsed.amount_usd, parsed.payment_tx_hash);
+  return JSON.stringify({
+    success: true,
+    agent_id: parsed.agent_id,
+    credited_usd: parsed.amount_usd,
+    new_balance_usd: ledger.balance_usd,
+    message: `$${parsed.amount_usd} credits added. Balance: $${ledger.balance_usd.toFixed(4)}`,
+  }, null, 2);
 }

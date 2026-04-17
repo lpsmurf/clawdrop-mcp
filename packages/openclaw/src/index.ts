@@ -6,7 +6,7 @@
  *   - mcp-wallet:          check_balance, get_token_price, swap_tokens, send_tokens,
  *                          get_transaction_history, get_fee_summary
  *   - travel-crypto-pro:   search_flights, price_flight, book_flight
- *   - research:            web_search, summarize_url, get_news
+ *   - research:            web_search, summarize_url, get_news, get_token_info, get_trending_tokens, search_token
  *
  * Environment:
  *   WALLET_PRIVATE_KEY   — Solana wallet private key (bs58)
@@ -187,6 +187,33 @@ const researchToolDefs: Tool[] = [
       required: ['query'],
     },
   },
+  {
+    name: 'get_token_info',
+    description: 'Get real-time token data from DexScreener: price, 24h change, volume, liquidity, market cap, DEX, chain, and social links.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        address: { type: 'string', description: 'Token mint address (Solana) or contract address (EVM)' },
+      },
+      required: ['address'],
+    },
+  },
+  {
+    name: 'get_trending_tokens',
+    description: 'Get top trending/boosted tokens on DexScreener right now',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'search_token',
+    description: 'Search DexScreener for tokens/pairs by symbol or name. Returns top 5 matching pairs with price and liquidity.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Token symbol or name to search (e.g. "SOL", "bonk", "WIF")' },
+      },
+      required: ['query'],
+    },
+  },
 ];
 
 const allTools: Tool[] = [...walletTools, ...travelTools, ...researchToolDefs];
@@ -198,7 +225,7 @@ const WALLET_TOOLS = new Set([
   'send_tokens', 'get_transaction_history', 'get_fee_summary',
 ]);
 const TRAVEL_TOOLS = new Set(['search_flights', 'price_flight', 'book_flight']);
-const RESEARCH_TOOLS = new Set(['web_search', 'summarize_url', 'get_news']);
+const RESEARCH_TOOLS = new Set(['web_search', 'summarize_url', 'get_news', 'get_token_info', 'get_trending_tokens', 'search_token']);
 
 // ─── Routing ──────────────────────────────────────────────────────────────────
 

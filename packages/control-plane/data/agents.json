@@ -1,0 +1,41 @@
+[
+  {
+    "agent_id": "agent_1776386512240_q02xyz",
+    "tier_id": "tier_a",
+    "agent_name": "demo-agent-001",
+    "owner_wallet": "5RQnNcYzXdSHr1CiBJ468tApY41KyKgPPr8W4tSeZHFJ",
+    "bundles": [
+      "travel-crypto-pro"
+    ],
+    "status": "provisioning",
+    "console_url": "http://127.0.0.1:34906",
+    "deployed_at": "2026-04-17T00:41:54.971Z",
+    "last_activity": "2026-04-17T00:41:54.971Z",
+    "subscription": {
+      "tier_id": "tier_a",
+      "amount_usd": 100,
+      "payment_token": "SOL",
+      "started_at": "2026-04-17T00:41:54.971Z",
+      "next_payment_due": "2026-05-17T00:41:54.971Z",
+      "grace_period_end": null,
+      "payment_history": [
+        {
+          "payment_id": "pay_1776386512240",
+          "amount": 0.5,
+          "token": "SOL",
+          "tx_hash": "devnet_test_mock_001",
+          "timestamp": "2026-04-17T00:41:54.971Z",
+          "fee_charged_usd": 0.35000000000000003,
+          "jupiter_swap": false
+        }
+      ]
+    },
+    "logs": [
+      {
+        "timestamp": "2026-04-17T00:41:54.971Z",
+        "level": "info",
+        "message": "Provisioning started. Tier: tier_a. Bundles: travel-crypto-pro"
+      }
+    ]
+  }
+]
