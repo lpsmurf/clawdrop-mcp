@@ -262,6 +262,15 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
+
+// Start Telegram bot as background process if token is configured
+if (process.env.TELEGRAM_BOT_TOKEN) {
+  import('./bot.js').catch((err: Error) =>
+    console.error('[openclaw] Telegram bot failed to start:', err.message)
+  );
+  console.error('[openclaw] Telegram bot starting...');
+}
+
 console.error(
   'clawdrop-openclaw MCP running (stdio) — bundles: mcp-wallet, travel-crypto-pro, research'
 );
