@@ -14,3 +14,7 @@ dist/
 devnet-wallet.json
 *-wallet.json
 *.key
+
+# MemPalace per-project files (issue #185)
+mempalace.yaml
+entities.json
