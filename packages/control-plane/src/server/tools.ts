@@ -145,6 +145,7 @@ interface TokenAnalytics {
   liquidity?: number;
   holder_count?: number;
   volume_24h?: number;
+  price_source?: string;
 }
 
 interface WalletAnalytics {
@@ -228,17 +229,48 @@ birdeyeApi.interceptors.response.use(
   }
 );
 
+// Jupiter fallback for price when Birdeye fails
+const JUPITER_PRICE = 'https://price.jup.ag/v6/price';
+
+async function getTokenPriceWithFallback(mint: string): Promise<any> {
+  // Try Birdeye first
+  try {
+    const res = await birdeyeApi.get(`/defi/price?token_address=${mint}&chain=solana`);
+    if (res.data?.success !== false) {
+      return { price_usd: res.data?.price || res.data?.value, source: 'birdeye' };
+    }
+  } catch (err: any) {
+    logger.warn({ mint, error: err.message }, 'Birdeye price failed, falling back to Jupiter');
+  }
+  
+  // Fallback to Jupiter
+  try {
+    const res = await axios.get(`${JUPITER_PRICE}?ids=${mint}`);
+    const price = res.data.data?.[mint]?.price;
+    return { price_usd: price, source: 'jupiter' };
+  } catch (err: any) {
+    logger.error({ mint, error: err.message }, 'Both Birdeye and Jupiter price failed');
+    return { price_usd: 0, source: 'none' };
+  }
+}
+
 // Updated to v3 API endpoints per Context7 docs
 async function birdeyeGetTokenMeta(mint: string) {
-  // GET /defi/v3/token/meta-data/single?tokenAddress={mint}
-  const res = await birdeyeApi.get(`/defi/v3/token/meta-data/single?tokenAddress=${mint}`);
-  return res.data?.data || res.data; // v3 wraps in data field
+  try {
+    // GET /defi/v3/token/meta-data/single?tokenAddress={mint}
+    const res = await birdeyeApi.get(`/defi/v3/token/meta-data/single?tokenAddress=${mint}`);
+    return res.data?.data || res.data;
+  } catch (err: any) {
+    if (err.response?.status === 403) {
+      logger.warn('Birdeye v3 metadata requires higher permissions, using fallback');
+    }
+    // Return minimal metadata from known tokens or Jupiter
+    return { symbol: 'UNKNOWN', name: 'Unknown Token' };
+  }
 }
 
 async function birdeyeGetTokenPrice(mint: string) {
-  // GET /defi/price?token_address={mint}&chain=solana
-  const res = await birdeyeApi.get(`/defi/price?token_address=${mint}&chain=solana`);
-  return res.data;
+  return getTokenPriceWithFallback(mint);
 }
 
 async function birdeyeGetTokenOverview(mint: string) {
@@ -724,21 +756,22 @@ async function handleGetTokenAnalytics(input: unknown): Promise<string> {
 
   // Fetch from API
   const [meta, price] = await Promise.all([
-    birdeyeGetTokenMeta(mint).catch(() => null),
-    birdeyeGetTokenPrice(mint).catch(() => null),
+    birdeyeGetTokenMeta(mint).catch(() => ({ symbol: 'UNKNOWN', name: 'Unknown Token' })),
+    birdeyeGetTokenPrice(mint),
   ]);
 
-  // v3 API response structure from Context7
+  // Build result with fallback handling
   const result: TokenAnalytics = {
     mint,
     symbol: meta?.symbol || 'UNKNOWN',
     name: meta?.name || 'Unknown Token',
-    price_usd: price?.price || price?.price_usd || 0,
-    price_change_24h: price?.price_change_24h || 0,
+    price_usd: price?.price_usd || 0,
+    price_change_24h: price?.price_change_24h || meta?.price24hChangePercent || 0,
     market_cap: meta?.market_cap || meta?.fdv,
     liquidity: meta?.liquidity,
     holder_count: meta?.holder_count,
     volume_24h: meta?.volume_24h || meta?.volume24hUSD,
+    price_source: price?.source || 'unknown',
   };
 
   // Cache result
@@ -795,9 +828,21 @@ async function handleGetWalletAnalytics(input: unknown): Promise<string> {
     return JSON.stringify(cached, null, 2);
   }
 
-  // Fetch wallet tokens
-  const data = await birdeyeGetWalletTokens(wallet);
-  const tokens = data?.items || data?.tokens || data || [];
+  // Fetch wallet tokens (may fail with 403 if API key lacks permissions)
+  let tokens: any[] = [];
+  try {
+    const data = await birdeyeGetWalletTokens(wallet);
+    tokens = data?.items || data?.tokens || data || [];
+  } catch (err: any) {
+    logger.warn({ wallet, error: err.message }, 'Birdeye wallet fetch failed, returning empty');
+    // Return empty portfolio if wallet API fails
+    return JSON.stringify({
+      wallet,
+      total_value_usd: 0,
+      holdings: [],
+      note: 'Wallet analytics temporarily unavailable (API permissions)',
+    }, null, 2);
+  }
 
   // Calculate total value
   let totalValue = 0;
