@@ -18,7 +18,15 @@
     "install-all": "npm install",
     "clean": "rm -rf node_modules packages/*/node_modules packages/*/dist"
   },
-  "keywords": ["solana", "agentic", "mcp", "deployment"],
+  "keywords": [
+    "solana",
+    "agentic",
+    "mcp",
+    "deployment"
+  ],
   "author": "Clawdrop Team",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "@upstash/context7-mcp": "^2.1.8"
+  }
 }
