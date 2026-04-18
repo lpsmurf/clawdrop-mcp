@@ -198,7 +198,7 @@ const BIRDEYE_CACHE_TTL = {
 };
 
 const BIRDEYE_API_KEY = process.env.BIRDEYE_API_KEY!;
-const BIRDEYE_BASE_URL = 'https://api.birdeye.so/v1';
+const BIRDEYE_BASE_URL = 'https://public-api.birdeye.so';
 
 const birdeyeApi = axios.create({
   baseURL: BIRDEYE_BASE_URL,
@@ -228,29 +228,35 @@ birdeyeApi.interceptors.response.use(
   }
 );
 
+// Updated to v3 API endpoints per Context7 docs
 async function birdeyeGetTokenMeta(mint: string) {
-  const res = await birdeyeApi.get(`/token/meta?address=${mint}`);
-  return res.data;
+  // GET /defi/v3/token/meta-data/single?tokenAddress={mint}
+  const res = await birdeyeApi.get(`/defi/v3/token/meta-data/single?tokenAddress=${mint}`);
+  return res.data?.data || res.data; // v3 wraps in data field
 }
 
 async function birdeyeGetTokenPrice(mint: string) {
-  const res = await birdeyeApi.get(`/token/price?address=${mint}`);
+  // GET /defi/price?token_address={mint}&chain=solana
+  const res = await birdeyeApi.get(`/defi/price?token_address=${mint}&chain=solana`);
   return res.data;
 }
 
 async function birdeyeGetTokenOverview(mint: string) {
-  const res = await birdeyeApi.get(`/token/overview?address=${mint}`);
-  return res.data;
+  // v3 uses same meta-data endpoint for overview info
+  const res = await birdeyeApi.get(`/defi/v3/token/meta-data/single?tokenAddress=${mint}`);
+  return res.data?.data || res.data;
 }
 
 async function birdeyeGetTrendingTokens() {
-  const res = await birdeyeApi.get('/defi/trending');
-  return res.data;
+  // GET /defi/token_trending?limit=10
+  const res = await birdeyeApi.get('/defi/token_trending?limit=10');
+  return res.data?.data || res.data;
 }
 
 async function birdeyeGetWalletTokens(wallet: string) {
-  const res = await birdeyeApi.get(`/wallet/token_list?wallet=${wallet}`);
-  return res.data;
+  // GET /v1/wallet/token_list?address={wallet} (deprecated but still functional)
+  const res = await birdeyeApi.get(`/v1/wallet/token_list?address=${wallet}`);
+  return res.data?.data || res.data;
 }
 
 // ─── Tool definitions (JSON Schema for MCP protocol) ────────────────────────────
@@ -717,22 +723,22 @@ async function handleGetTokenAnalytics(input: unknown): Promise<string> {
   }
 
   // Fetch from API
-  const [meta, price, overview] = await Promise.all([
+  const [meta, price] = await Promise.all([
     birdeyeGetTokenMeta(mint).catch(() => null),
     birdeyeGetTokenPrice(mint).catch(() => null),
-    birdeyeGetTokenOverview(mint).catch(() => null),
   ]);
 
+  // v3 API response structure from Context7
   const result: TokenAnalytics = {
     mint,
     symbol: meta?.symbol || 'UNKNOWN',
     name: meta?.name || 'Unknown Token',
-    price_usd: price?.price_usd || 0,
+    price_usd: price?.price || price?.price_usd || 0,
     price_change_24h: price?.price_change_24h || 0,
-    market_cap: meta?.market_cap,
-    liquidity: overview?.liquidity,
-    holder_count: meta?.holder_count || overview?.num_holders,
-    volume_24h: overview?.volume_24h,
+    market_cap: meta?.market_cap || meta?.fdv,
+    liquidity: meta?.liquidity,
+    holder_count: meta?.holder_count,
+    volume_24h: meta?.volume_24h || meta?.volume24hUSD,
   };
 
   // Cache result
@@ -753,14 +759,15 @@ async function handleGetMarketOverview(_input: unknown): Promise<string> {
   // Fetch from API
   const data = await birdeyeGetTrendingTokens();
   
-  // Format top 10
-  const trending = (data?.tokens || data || []).slice(0, 10).map((t: any) => ({
-    mint: t.address || t.mint,
+  // Format top 10 from v3 API response
+  const tokens = data?.coins || data?.data || [];
+  const trending = tokens.slice(0, 10).map((t: any) => ({
+    mint: t.address || t.token_address,
     symbol: t.symbol,
     name: t.name,
-    price_usd: t.price_usd || t.price,
-    price_change_24h: t.price_change_24h || t.change24h,
-    volume_24h: t.volume_24h || t.volume,
+    price_usd: t.price,
+    price_change_24h: t.price24hChangePercent || t.price_change_24h,
+    volume_24h: t.volume24hUSD || t.volume_24h,
   }));
 
   const result = {

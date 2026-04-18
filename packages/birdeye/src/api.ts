@@ -1,6 +1,7 @@
 /**
  * Birdeye API Client
  * HTTP wrapper with retry logic and caching
+ * Updated to v3 API per Context7 documentation
  */
 import axios from 'axios';
 import { pino } from 'pino';
@@ -8,7 +9,7 @@ import { pino } from 'pino';
 const logger = pino({ name: 'birdeye-api' });
 
 const API_KEY = process.env.BIRDEYE_API_KEY!;
-const BASE_URL = 'https://api.birdeye.so/v1';
+const BASE_URL = 'https://public-api.birdeye.so';
 
 if (!API_KEY) {
   throw new Error('BIRDEYE_API_KEY env var required');
@@ -42,27 +43,33 @@ api.interceptors.response.use(
   }
 );
 
+// v3 API endpoints per Context7 docs
 export async function getTokenMeta(mint: string) {
-  const res = await api.get(`/token/meta?address=${mint}`);
-  return res.data;
+  // GET /defi/v3/token/meta-data/single?tokenAddress={mint}
+  const res = await api.get(`/defi/v3/token/meta-data/single?tokenAddress=${mint}`);
+  return res.data?.data || res.data;
 }
 
 export async function getTokenPrice(mint: string) {
-  const res = await api.get(`/token/price?address=${mint}`);
+  // GET /defi/price?token_address={mint}&chain=solana
+  const res = await api.get(`/defi/price?token_address=${mint}&chain=solana`);
   return res.data;
 }
 
 export async function getTokenOverview(mint: string) {
-  const res = await api.get(`/token/overview?address=${mint}`);
-  return res.data;
+  // v3 uses same meta-data endpoint
+  const res = await api.get(`/defi/v3/token/meta-data/single?tokenAddress=${mint}`);
+  return res.data?.data || res.data;
 }
 
 export async function getTrendingTokens() {
-  const res = await api.get('/defi/trending');
-  return res.data;
+  // GET /defi/token_trending?limit=10
+  const res = await api.get('/defi/token_trending?limit=10');
+  return res.data?.data || res.data;
 }
 
 export async function getWalletTokens(wallet: string) {
-  const res = await api.get(`/wallet/token_list?wallet=${wallet}`);
-  return res.data;
+  // GET /v1/wallet/token_list?address={wallet}
+  const res = await api.get(`/v1/wallet/token_list?address=${wallet}`);
+  return res.data?.data || res.data;
 }

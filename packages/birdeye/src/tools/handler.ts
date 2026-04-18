@@ -68,17 +68,18 @@ async function getMarketOverview(_input: Record<string, unknown>): Promise<strin
     return JSON.stringify(cached, null, 2);
   }
 
-  // Fetch from API
+  // Fetch from API (v3 endpoint)
   const data = await getTrendingTokens();
   
-  // Format top 10
-  const trending = (data?.tokens || data || []).slice(0, 10).map((t: any) => ({
-    mint: t.address || t.mint,
+  // Format top 10 from v3 response
+  const tokens = data?.coins || data?.data || [];
+  const trending = tokens.slice(0, 10).map((t: any) => ({
+    mint: t.address || t.token_address,
     symbol: t.symbol,
     name: t.name,
-    price_usd: t.price_usd || t.price,
-    price_change_24h: t.price_change_24h || t.change24h,
-    volume_24h: t.volume_24h || t.volume,
+    price_usd: t.price,
+    price_change_24h: t.price24hChangePercent || t.price_change_24h,
+    volume_24h: t.volume24hUSD || t.volume_24h,
   }));
 
   const result = {
