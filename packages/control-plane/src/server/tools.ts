@@ -23,6 +23,116 @@ import { logger } from '../utils/logger';
 // Load persisted state on startup
 loadFromDisk();
 
+// ─── Risk Policy Integration ─────────────────────────────────────────────────
+
+type RiskTier = 'GREEN' | 'YELLOW' | 'RED';
+
+interface TokenRisk {
+  mint: string;
+  tier: RiskTier;
+  confidence: number;
+  flags: string[];
+  reasoning: string;
+  recommendation: 'proceed' | 'caution' | 'block';
+}
+
+interface PolicyDecision {
+  action: 'swap' | 'send' | 'stake';
+  token_mint: string;
+  risk_tier: RiskTier;
+  decision: 'allowed' | 'warned' | 'blocked';
+  reason_if_blocked?: string;
+  warning_message?: string;
+}
+
+const WHITELIST = (process.env.WHITELIST_TOKENS || 'So11111111111111111111111111111111111111112')
+  .split(',')
+  .filter(Boolean);
+
+const RISK_POLICY = process.env.RISK_POLICY || 'normal';
+
+async function assessTokenRisk(mint: string): Promise<TokenRisk> {
+  const API_KEY = process.env.DD_XYZ_API_KEY;
+  
+  if (!API_KEY) {
+    logger.warn('DD_XYZ_API_KEY not set, returning YELLOW risk');
+    return {
+      mint,
+      tier: 'YELLOW',
+      confidence: 50,
+      flags: ['api_key_missing'],
+      reasoning: 'Risk API not configured - proceeding with caution',
+      recommendation: 'caution',
+    };
+  }
+  
+  try {
+    const res = await axios.get(`https://dd.xyz/api/v1/token_risk?address=${mint}`, {
+      headers: { 'Authorization': `Bearer ${API_KEY}` },
+      timeout: 10000,
+    });
+    
+    const tier = (res.data.tier || 'yellow').toUpperCase() as RiskTier;
+    return {
+      mint,
+      tier,
+      confidence: res.data.confidence || 80,
+      flags: res.data.flags || [],
+      reasoning: res.data.reasoning || 'No specific issues detected',
+      recommendation: tier === 'GREEN' ? 'proceed' : tier === 'RED' ? 'block' : 'caution',
+    };
+  } catch (err) {
+    logger.error({ err, mint }, 'Failed to assess token risk');
+    return {
+      mint,
+      tier: 'YELLOW',
+      confidence: 50,
+      flags: ['api_error'],
+      reasoning: 'Unable to assess risk - API error',
+      recommendation: 'caution',
+    };
+  }
+}
+
+async function executeWithRiskCheck(
+  action: 'swap' | 'send' | 'stake',
+  tokenMint: string,
+  _amount: number
+): Promise<PolicyDecision> {
+  if (WHITELIST.includes(tokenMint)) {
+    return { action, token_mint: tokenMint, risk_tier: 'GREEN', decision: 'allowed' };
+  }
+  
+  const risk = await assessTokenRisk(tokenMint);
+  
+  if (risk.tier === 'GREEN') {
+    return { action, token_mint: tokenMint, risk_tier: 'GREEN', decision: 'allowed' };
+  }
+  
+  if (risk.tier === 'YELLOW') {
+    const strictMode = RISK_POLICY === 'strict';
+    return {
+      action, token_mint: tokenMint, risk_tier: 'YELLOW',
+      decision: strictMode ? 'blocked' : 'warned',
+      warning_message: strictMode ? `Blocked: ${risk.reasoning}` : `⚠️ Caution: ${risk.reasoning}`,
+      reason_if_blocked: strictMode ? risk.reasoning : undefined,
+    };
+  }
+  
+  return {
+    action, token_mint: tokenMint, risk_tier: 'RED', decision: 'blocked',
+    reason_if_blocked: `🚫 Blocked for safety: ${risk.reasoning}`,
+  };
+}
+
+function getRiskEmoji(tier: RiskTier): string {
+  switch (tier) {
+    case 'GREEN': return '🟢';
+    case 'YELLOW': return '🟡';
+    case 'RED': return '🔴';
+  }
+}
+
 // ─── Birdeye Integration ──────────────────────────────────────────────────────
 
 interface TokenAnalytics {
@@ -294,6 +404,31 @@ export const tools: Tool[] = [
       required: ['wallet'],
     },
   },
+  // Risk Policy tool
+  {
+    name: 'check_token_risk',
+    description: 'Assess the on-chain risk of a token before transacting (Green/Yellow/Red)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        mint: { 
+          type: 'string', 
+          description: 'Token mint address to check' 
+        },
+        action: { 
+          type: 'string', 
+          enum: ['swap', 'send', 'stake'],
+          description: 'Type of transaction you plan to do'
+        },
+        amount: { 
+          type: 'number', 
+          description: 'Amount (for context)',
+          default: 0
+        },
+      },
+      required: ['mint', 'action'],
+    },
+  },
 ];
 
 // ─── Tool dispatcher ──────────────────────────────────────────────────────────
@@ -311,6 +446,8 @@ export async function handleToolCall(toolName: string, toolInput: unknown): Prom
       case 'get_token_analytics': return await handleGetTokenAnalytics(toolInput);
       case 'get_market_overview': return await handleGetMarketOverview(toolInput);
       case 'get_wallet_analytics': return await handleGetWalletAnalytics(toolInput);
+      // Risk Policy tool
+      case 'check_token_risk': return await handleCheckTokenRisk(toolInput);
       default: throw new Error(`Unknown tool: ${toolName}`);
     }
   } catch (error) {
@@ -691,4 +828,23 @@ async function handleGetWalletAnalytics(input: unknown): Promise<string> {
   birdeyeCache.set(cacheKey, result, BIRDEYE_CACHE_TTL.WALLET);
 
   return JSON.stringify(result, null, 2);
+}
+
+// ─── Risk Policy Handler ──────────────────────────────────────────────────────
+
+async function handleCheckTokenRisk(input: unknown): Promise<string> {
+  const parsed = input as { mint: string; action: 'swap' | 'send' | 'stake'; amount?: number };
+  if (!parsed.mint) throw new Error('mint parameter required');
+  if (!parsed.action) throw new Error('action parameter required');
+  
+  const result = await executeWithRiskCheck(parsed.action, parsed.mint, parsed.amount || 0);
+  
+  const emoji = getRiskEmoji(result.risk_tier);
+  const summary = result.decision === 'blocked'
+    ? `${emoji} ${result.reason_if_blocked}`
+    : result.decision === 'warned'
+    ? `${emoji} ${result.warning_message}`
+    : `${emoji} Safe to proceed`;
+  
+  return JSON.stringify({ ...result, summary }, null, 2);
 }
