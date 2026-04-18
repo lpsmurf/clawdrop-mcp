@@ -1,4 +1,5 @@
 import { Tool } from '@modelcontextprotocol/sdk/types';
+import axios from 'axios';
 import {
   ToolInputSchemas,
   ListTiersOutputSchema,
@@ -22,7 +23,127 @@ import { logger } from '../utils/logger';
 // Load persisted state on startup
 loadFromDisk();
 
-// ─── Tool definitions (JSON Schema for MCP protocol) ─────────────────────────
+// ─── Birdeye Integration ──────────────────────────────────────────────────────
+
+interface TokenAnalytics {
+  mint: string;
+  symbol: string;
+  name: string;
+  price_usd: number;
+  price_change_24h: number;
+  market_cap?: number;
+  liquidity?: number;
+  holder_count?: number;
+  volume_24h?: number;
+}
+
+interface WalletAnalytics {
+  wallet: string;
+  total_value_usd: number;
+  holdings: Array<{
+    mint: string;
+    symbol: string;
+    balance: number;
+    value_usd: number;
+    percentage_of_portfolio: number;
+  }>;
+}
+
+interface CacheEntry {
+  data: any;
+  expiresAt: number;
+}
+
+class BirdeyeCache {
+  private store = new Map<string, CacheEntry>();
+
+  get(key: string): any | null {
+    const entry = this.store.get(key);
+    if (!entry || Date.now() > entry.expiresAt) {
+      this.store.delete(key);
+      return null;
+    }
+    return entry.data;
+  }
+
+  set(key: string, data: any, ttlSeconds: number) {
+    this.store.set(key, { 
+      data, 
+      expiresAt: Date.now() + ttlSeconds * 1000 
+    });
+  }
+
+  clear() {
+    this.store.clear();
+  }
+}
+
+const birdeyeCache = new BirdeyeCache();
+
+const BIRDEYE_CACHE_TTL = {
+  PRICE: 300,      // 5 minutes
+  TRENDING: 600,   // 10 minutes
+  WALLET: 300,     // 5 minutes
+  META: 3600,      // 1 hour
+};
+
+const BIRDEYE_API_KEY = process.env.BIRDEYE_API_KEY!;
+const BIRDEYE_BASE_URL = 'https://api.birdeye.so/v1';
+
+const birdeyeApi = axios.create({
+  baseURL: BIRDEYE_BASE_URL,
+  headers: {
+    'X-API-KEY': BIRDEYE_API_KEY || 'demo',
+    'Accept': 'application/json',
+  },
+  timeout: 10000,
+});
+
+// Retry on 521 errors
+birdeyeApi.interceptors.response.use(
+  (res) => res,
+  async (err) => {
+    const config = err.config;
+    if (!config || !config.retry) {
+      config.retry = 0;
+    }
+    if (err.response?.status === 521 && config.retry < 3) {
+      config.retry++;
+      const delay = Math.pow(2, config.retry) * 1000;
+      logger.warn({ retry: config.retry, delay }, 'Retrying Birdeye API (521 error)');
+      await new Promise(r => setTimeout(r, delay));
+      return birdeyeApi(config);
+    }
+    return Promise.reject(err);
+  }
+);
+
+async function birdeyeGetTokenMeta(mint: string) {
+  const res = await birdeyeApi.get(`/token/meta?address=${mint}`);
+  return res.data;
+}
+
+async function birdeyeGetTokenPrice(mint: string) {
+  const res = await birdeyeApi.get(`/token/price?address=${mint}`);
+  return res.data;
+}
+
+async function birdeyeGetTokenOverview(mint: string) {
+  const res = await birdeyeApi.get(`/token/overview?address=${mint}`);
+  return res.data;
+}
+
+async function birdeyeGetTrendingTokens() {
+  const res = await birdeyeApi.get('/defi/trending');
+  return res.data;
+}
+
+async function birdeyeGetWalletTokens(wallet: string) {
+  const res = await birdeyeApi.get(`/wallet/token_list?wallet=${wallet}`);
+  return res.data;
+}
+
+// ─── Tool definitions (JSON Schema for MCP protocol) ────────────────────────────
 
 export const tools: Tool[] = [
   {
@@ -135,6 +256,44 @@ export const tools: Tool[] = [
       required: ['agent_id', 'owner_wallet', 'confirm'],
     },
   },
+  // Birdeye tools
+  {
+    name: 'get_token_analytics',
+    description: 'Get detailed analytics for a token (price, liquidity, holder count, volume)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        mint: { 
+          type: 'string', 
+          description: 'Token mint address (e.g., EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v for USDC)' 
+        }
+      },
+      required: ['mint'],
+    },
+  },
+  {
+    name: 'get_market_overview',
+    description: 'Get trending tokens on Solana (top 10 by volume/activity)',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'get_wallet_analytics',
+    description: 'Analyze a wallet\'s token holdings and portfolio value',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        wallet: { 
+          type: 'string', 
+          description: 'Solana wallet address to analyze' 
+        }
+      },
+      required: ['wallet'],
+    },
+  },
 ];
 
 // ─── Tool dispatcher ──────────────────────────────────────────────────────────
@@ -148,6 +307,10 @@ export async function handleToolCall(toolName: string, toolInput: unknown): Prom
       case 'deploy_agent':        return await handleDeployAgent(toolInput);
       case 'get_deployment_status': return await handleGetDeploymentStatus(toolInput);
       case 'cancel_subscription': return await handleCancelSubscription(toolInput);
+      // Birdeye tools
+      case 'get_token_analytics': return await handleGetTokenAnalytics(toolInput);
+      case 'get_market_overview': return await handleGetMarketOverview(toolInput);
+      case 'get_wallet_analytics': return await handleGetWalletAnalytics(toolInput);
       default: throw new Error(`Unknown tool: ${toolName}`);
     }
   } catch (error) {
@@ -399,4 +562,133 @@ async function handleCancelSubscription(input: unknown): Promise<string> {
   });
 
   return JSON.stringify(response, null, 2);
+}
+
+// ─── Birdeye Handlers ─────────────────────────────────────────────────────────
+
+async function handleGetTokenAnalytics(input: unknown): Promise<string> {
+  const parsed = input as { mint: string };
+  if (!parsed.mint) throw new Error('mint parameter required');
+  
+  const mint = parsed.mint;
+  const cacheKey = `token:${mint}`;
+  
+  // Check cache
+  const cached = birdeyeCache.get(cacheKey);
+  if (cached) {
+    return JSON.stringify(cached, null, 2);
+  }
+
+  // Fetch from API
+  const [meta, price, overview] = await Promise.all([
+    birdeyeGetTokenMeta(mint).catch(() => null),
+    birdeyeGetTokenPrice(mint).catch(() => null),
+    birdeyeGetTokenOverview(mint).catch(() => null),
+  ]);
+
+  const result: TokenAnalytics = {
+    mint,
+    symbol: meta?.symbol || 'UNKNOWN',
+    name: meta?.name || 'Unknown Token',
+    price_usd: price?.price_usd || 0,
+    price_change_24h: price?.price_change_24h || 0,
+    market_cap: meta?.market_cap,
+    liquidity: overview?.liquidity,
+    holder_count: meta?.holder_count || overview?.num_holders,
+    volume_24h: overview?.volume_24h,
+  };
+
+  // Cache result
+  birdeyeCache.set(cacheKey, result, BIRDEYE_CACHE_TTL.PRICE);
+
+  return JSON.stringify(result, null, 2);
+}
+
+async function handleGetMarketOverview(_input: unknown): Promise<string> {
+  const cacheKey = 'trending';
+  
+  // Check cache
+  const cached = birdeyeCache.get(cacheKey);
+  if (cached) {
+    return JSON.stringify(cached, null, 2);
+  }
+
+  // Fetch from API
+  const data = await birdeyeGetTrendingTokens();
+  
+  // Format top 10
+  const trending = (data?.tokens || data || []).slice(0, 10).map((t: any) => ({
+    mint: t.address || t.mint,
+    symbol: t.symbol,
+    name: t.name,
+    price_usd: t.price_usd || t.price,
+    price_change_24h: t.price_change_24h || t.change24h,
+    volume_24h: t.volume_24h || t.volume,
+  }));
+
+  const result = {
+    count: trending.length,
+    tokens: trending,
+    updated_at: new Date().toISOString(),
+  };
+
+  // Cache result
+  birdeyeCache.set(cacheKey, result, BIRDEYE_CACHE_TTL.TRENDING);
+
+  return JSON.stringify(result, null, 2);
+}
+
+async function handleGetWalletAnalytics(input: unknown): Promise<string> {
+  const parsed = input as { wallet: string };
+  if (!parsed.wallet) throw new Error('wallet parameter required');
+  
+  const wallet = parsed.wallet;
+  const cacheKey = `wallet:${wallet}`;
+  
+  // Check cache
+  const cached = birdeyeCache.get(cacheKey);
+  if (cached) {
+    return JSON.stringify(cached, null, 2);
+  }
+
+  // Fetch wallet tokens
+  const data = await birdeyeGetWalletTokens(wallet);
+  const tokens = data?.items || data?.tokens || data || [];
+
+  // Calculate total value
+  let totalValue = 0;
+  const holdings = [];
+
+  for (const token of tokens) {
+    const value = token.value_usd || token.valueUsd || 0;
+    totalValue += value;
+    holdings.push({
+      mint: token.address || token.mint,
+      symbol: token.symbol || 'UNKNOWN',
+      balance: token.ui_amount || token.balance || 0,
+      value_usd: value,
+      percentage_of_portfolio: 0,
+    });
+  }
+
+  // Calculate percentages
+  for (const h of holdings) {
+    h.percentage_of_portfolio = totalValue > 0 
+      ? Math.round((h.value_usd / totalValue) * 100 * 100) / 100 
+      : 0;
+  }
+
+  // Sort by value
+  holdings.sort((a: any, b: any) => b.value_usd - a.value_usd);
+
+  const result: WalletAnalytics = {
+    wallet,
+    total_value_usd: totalValue,
+    holdings,
+  };
+
+  // Cache result
+  birdeyeCache.set(cacheKey, result, BIRDEYE_CACHE_TTL.WALLET);
+
+  return JSON.stringify(result, null, 2);
 }
